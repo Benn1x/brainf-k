@@ -26,10 +26,11 @@ fn execute(path: &str) {
     let mut progr = 0;
     let mut stack = Vec::<(char, usize)>::new();
     let chars: Vec<char> = file.chars().collect();
+    let mut out: Vec<u8> = Vec::new();
     loop {
         let _chars = chars[progr];
         match _chars {
-            '.' => println!("{}", buffer[stc_ptr]),
+            '.' => out.push(buffer[stc_ptr]),
             ',' => {
                 buffer[stc_ptr] = match stdin().bytes().nth(0) {
                     Some(val) => match val {
@@ -81,6 +82,12 @@ fn execute(path: &str) {
         progr += 1;
 
         if progr >= chars.len() {
+            let s = match std::str::from_utf8(&out[..]) {
+                Ok(v) => v,
+                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            };
+
+            println!("output: {}", s);
             std::process::exit(0);
         }
     }
