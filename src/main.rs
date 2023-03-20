@@ -88,7 +88,7 @@ fn execute(path: &str) {
             };
 
             println!("output: {}", s);
-            std::process::exit(0);
+            break;
         }
     }
 }
