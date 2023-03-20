@@ -115,7 +115,7 @@ fn build_bin(path: &str) {
                 let mut plus = progr + 1;
                 loop {
                     match chars[plus] {
-                        '[' => plus += 1,
+                        '+' => plus += 1,
                         _ => break,
                     }
                     if plus >= chars.len() {
