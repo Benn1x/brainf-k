@@ -2,20 +2,16 @@ use std::fs::File;
 use std::fs::{read, read_to_string};
 use std::io::prelude::*;
 use std::io::{stdin, Read};
-use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     for pos in 2..args.len() {
-        let start = Instant::now();
         match &*args[1] {
             "-b" => build_bin(&args[pos]),
             "-i" => interpret(&args[pos]),
 
             _ => execute(&args[pos]),
         }
-        let duration = start.elapsed();
-        println!("Time elapsed in total {:?}", duration);
     }
 }
 
