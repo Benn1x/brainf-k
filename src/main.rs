@@ -98,6 +98,16 @@ fn execute(path: &str) {
     }
 }
 
+/// CHAR NUM PAR   OPR
+///   . = 1   0  (WRITE)
+///   , = 2   0  (READ)
+///   < = 3   1  (LEFT)
+///   > = 4   1  (RIGHT)
+///   + = 5   1  (INCREASE)
+///   - = 6   1  (DECREASE)
+///   [ = 7   0  (START FOR LOOP)
+///   ] = 8   0  (END FOR LOOP)
+
 fn build_bin(path: &str) {
     let file = read_in(path);
     let mut stack = Vec::<char>::new();
@@ -119,7 +129,7 @@ fn build_bin(path: &str) {
                 }
                 bytecode.push(3);
                 bytecode.push((left - progr) as u8);
-                progr += left - 1;
+                progr = left - 1;
             }
             '>' => {
                 let mut right = progr + 1;
@@ -131,7 +141,7 @@ fn build_bin(path: &str) {
                 }
                 bytecode.push(4);
                 bytecode.push((right - progr) as u8);
-                progr += right - 1;
+                progr = right - 1;
             }
 
             '+' => {
@@ -144,7 +154,7 @@ fn build_bin(path: &str) {
                 }
                 bytecode.push(5);
                 bytecode.push((plus - progr) as u8);
-                progr += plus - 1;
+                progr = plus - 1;
             }
             '-' => {
                 let mut minus = progr + 1;
@@ -156,7 +166,7 @@ fn build_bin(path: &str) {
                 }
                 bytecode.push(6);
                 bytecode.push((minus - progr) as u8);
-                progr += minus - 1;
+                progr = minus - 1;
             }
             '[' => {
                 bytecode.push(7);
