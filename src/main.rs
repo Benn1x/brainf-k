@@ -2,16 +2,20 @@ use std::fs::File;
 use std::fs::{read, read_to_string};
 use std::io::prelude::*;
 use std::io::{stdin, Read};
+use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     for pos in 2..args.len() {
+        let start = Instant::now();
         match &*args[1] {
             "-b" => build_bin(&args[pos]),
             "-i" => interpret(&args[pos]),
 
             _ => execute(&args[pos]),
         }
+        let duration = start.elapsed();
+        println!("Time elapsed in total {:?}", duration);
     }
 }
 
@@ -226,6 +230,7 @@ fn build_bin(path: &str) {
             }
         },
     };
+    println!("{:#?}", bytecode);
     for instr in bytecode {
         out_file.write_all(&[instr]).unwrap();
     }
@@ -255,31 +260,23 @@ fn interpret(path: &str) {
             }
             // <
             3 => {
-                dbg!(file[progr + 1] as usize);
                 stc_ptr -= file[progr + 1] as usize;
-                dbg!(stc_ptr);
 
                 progr += 1;
             }
             // >
             4 => {
-                dbg!(file[progr + 1] as usize);
                 stc_ptr += file[progr + 1] as usize;
-                dbg!(stc_ptr);
 
                 progr += 1;
             }
             // +
             5 => {
-                dbg!(stc_ptr);
-
                 buffer[stc_ptr] += file[progr + 1];
                 progr += 1;
             }
             // -
             6 => {
-                dbg!(stc_ptr);
-
                 buffer[stc_ptr] -= file[progr + 1];
                 progr += 1;
             }
@@ -290,6 +287,7 @@ fn interpret(path: &str) {
                     progr += 1;
                     loop {
                         match file[progr] {
+                            3..=6 => progr += 1,
                             7 => deep += 1,
                             8 => deep -= 1,
                             _ => (),
@@ -309,7 +307,7 @@ fn interpret(path: &str) {
                 let i = stack.last();
                 if let Some((7, val)) = i {
                     if buffer[stc_ptr] != 0 {
-                        progr = val + 1;
+                        progr = *val;
                     } else {
                         stack.pop();
                     }
