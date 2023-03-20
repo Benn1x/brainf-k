@@ -4,3 +4,10 @@ a simple bainf**k interpret just run:\
 - -b: Compile Files to ByteCode
 - -i run ByteCode
 - -r run PlainText Brainf**k
+
+i recommend to compile it to ByteCode and then Run the ByteCode  
+because:
+
+- a. The ByteCode is smaller in Size
+- b. The ByteCode is optimized
+- c. The Runtime is shorter
