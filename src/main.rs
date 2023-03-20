@@ -102,19 +102,34 @@ fn build_bin(path: &str) {
     let file = read_in(path);
     let mut stack = Vec::<char>::new();
     let chars: Vec<char> = file.chars().collect();
-    let mut bytecode = Vec::<&str>::new();
+    let mut bytecode = Vec::<u8>::new();
     let mut progr = 0;
 
-    loop {
+    'outer: loop {
         match chars[progr] {
-            '.' => bytecode.push("WRITE"),
-            ',' => bytecode.push("INPUT"),
-            '<' => bytecode.push("NEXT"),
-            '>' => bytecode.push("BACKE"),
-            '+' => bytecode.push("INCREASE"),
-            '-' => bytecode.push("DECREASE"),
+            '.' => bytecode.push(1),
+            ',' => bytecode.push(2),
+            '<' => bytecode.push(3),
+            '>' => bytecode.push(4),
+            '+' => {
+                let mut plus = progr + 1;
+                loop {
+                    match chars[plus] {
+                        '[' => plus += 1,
+                        _ => break,
+                    }
+                    if plus >= chars.len() {
+                        break 'outer;
+                    }
+                }
+                bytecode.push(5);
+                bytecode.push(9);
+                bytecode.push(plus as u8);
+                println!("{}", plus);
+            }
+            '-' => bytecode.push(6),
             '[' => {
-                bytecode.push("FOR");
+                bytecode.push(7);
                 stack.push('[');
                 let mut unmatch = progr + 1;
                 let mut deep = 1;
@@ -137,7 +152,7 @@ fn build_bin(path: &str) {
                 let i = stack.last();
                 if let Some('[') = i {
                     stack.pop();
-                    bytecode.push("END");
+                    bytecode.push(8);
                 } else {
                     eprintln!("Unmatched ']'");
                     std::process::exit(1);
@@ -160,8 +175,8 @@ fn build_bin(path: &str) {
             }
         },
     };
+    println!("{:#?}", bytecode);
     for instr in bytecode {
-        out_file.write_all(instr.as_bytes()).unwrap();
-        out_file.write_all(b"\n").unwrap();
+        out_file.write_all(&[instr]).unwrap();
     }
 }
