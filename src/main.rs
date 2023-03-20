@@ -1,5 +1,5 @@
-use std::fs::read_to_string;
 use std::fs::File;
+use std::fs::{read, read_to_string};
 use std::io::prelude::*;
 use std::io::{stdin, Read};
 
@@ -8,6 +8,7 @@ fn main() {
     for pos in 2..args.len() {
         match &*args[1] {
             "-b" => build_bin(&args[pos]),
+            "-i" => interpret(&args[pos]),
 
             _ => execute(&args[pos]),
         }
@@ -16,6 +17,16 @@ fn main() {
 
 fn read_in(path: &str) -> String {
     match read_to_string(path) {
+        Ok(val) => val,
+        Err(err) => {
+            eprintln!("Err: {}", err);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn read_byte(path: &str) -> Vec<u8> {
+    match read(path) {
         Ok(val) => val,
         Err(err) => {
             eprintln!("Err: {}", err);
@@ -215,8 +226,110 @@ fn build_bin(path: &str) {
             }
         },
     };
-    println!("{:#?}", bytecode);
     for instr in bytecode {
         out_file.write_all(&[instr]).unwrap();
+    }
+}
+
+fn interpret(path: &str) {
+    let file = read_byte(path);
+    let mut buffer: [u8; 30000] = [0; 30000];
+    let mut stc_ptr = 0;
+    let mut progr = 0;
+    let mut stack = Vec::<(u8, usize)>::new();
+    let mut out: Vec<u8> = Vec::new();
+
+    loop {
+        match file[progr] {
+            // .
+            1 => out.push(buffer[stc_ptr]),
+            // ,
+            2 => {
+                buffer[stc_ptr] = match stdin().bytes().nth(0) {
+                    Some(val) => match val {
+                        Ok(val) => val,
+                        Err(_) => std::process::exit(1),
+                    },
+                    None => std::process::exit(1),
+                }
+            }
+            // <
+            3 => {
+                dbg!(file[progr + 1] as usize);
+                stc_ptr -= file[progr + 1] as usize;
+                dbg!(stc_ptr);
+
+                progr += 1;
+            }
+            // >
+            4 => {
+                dbg!(file[progr + 1] as usize);
+                stc_ptr += file[progr + 1] as usize;
+                dbg!(stc_ptr);
+
+                progr += 1;
+            }
+            // +
+            5 => {
+                dbg!(stc_ptr);
+
+                buffer[stc_ptr] += file[progr + 1];
+                progr += 1;
+            }
+            // -
+            6 => {
+                dbg!(stc_ptr);
+
+                buffer[stc_ptr] -= file[progr + 1];
+                progr += 1;
+            }
+            // [
+            7 => {
+                if buffer[stc_ptr] == 0 {
+                    let mut deep = 1;
+                    progr += 1;
+                    loop {
+                        match file[progr] {
+                            7 => deep += 1,
+                            8 => deep -= 1,
+                            _ => (),
+                        }
+                        progr += 1;
+                        if deep == 0 {
+                            break;
+                        }
+                    }
+                    continue;
+                } else {
+                    stack.push((7, progr));
+                }
+            }
+            // ]
+            8 => {
+                let i = stack.last();
+                if let Some((7, val)) = i {
+                    if buffer[stc_ptr] != 0 {
+                        progr = val + 1;
+                    } else {
+                        stack.pop();
+                    }
+                } else {
+                    eprintln!("Unmatched ']'");
+                    std::process::exit(1);
+                }
+            }
+            _ => (),
+        }
+        progr += 1;
+
+        if progr >= file.len() {
+            let s = match std::str::from_utf8(&out[..]) {
+                Ok(v) => v,
+                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            };
+
+            println!("output: {}", s);
+            break;
+        }
     }
 }
