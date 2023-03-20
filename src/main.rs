@@ -105,29 +105,59 @@ fn build_bin(path: &str) {
     let mut bytecode = Vec::<u8>::new();
     let mut progr = 0;
 
-    'outer: loop {
+    loop {
         match chars[progr] {
             '.' => bytecode.push(1),
             ',' => bytecode.push(2),
-            '<' => bytecode.push(3),
-            '>' => bytecode.push(4),
+            '<' => {
+                let mut left = progr + 1;
+                while let '<' = chars[left] {
+                    left += 1;
+                    if left >= chars.len() {
+                        break;
+                    }
+                }
+                bytecode.push(3);
+                bytecode.push((left - progr) as u8);
+                progr += left - 1;
+            }
+            '>' => {
+                let mut right = progr + 1;
+                while let '>' = chars[right] {
+                    right += 1;
+                    if right >= chars.len() {
+                        break;
+                    }
+                }
+                bytecode.push(4);
+                bytecode.push((right - progr) as u8);
+                progr += right - 1;
+            }
+
             '+' => {
                 let mut plus = progr + 1;
-                loop {
-                    match chars[plus] {
-                        '+' => plus += 1,
-                        _ => break,
-                    }
+                while let '+' = chars[plus] {
+                    plus += 1;
                     if plus >= chars.len() {
-                        break 'outer;
+                        break;
                     }
                 }
                 bytecode.push(5);
-                bytecode.push(9);
-                bytecode.push(plus as u8);
-                println!("{}", plus);
+                bytecode.push((plus - progr) as u8);
+                progr += plus - 1;
             }
-            '-' => bytecode.push(6),
+            '-' => {
+                let mut minus = progr + 1;
+                while let '-' = chars[minus] {
+                    minus += 1;
+                    if minus >= chars.len() {
+                        break;
+                    }
+                }
+                bytecode.push(6);
+                bytecode.push((minus - progr) as u8);
+                progr += minus - 1;
+            }
             '[' => {
                 bytecode.push(7);
                 stack.push('[');
