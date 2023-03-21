@@ -2,16 +2,20 @@ use std::fs::File;
 use std::fs::{read, read_to_string};
 use std::io::prelude::*;
 use std::io::{stdin, Read};
+use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     for pos in 2..args.len() {
+        let start = Instant::now();
         match &*args[1] {
             "-b" => build_bin(&args[pos]),
             "-i" => interpret(&args[pos]),
 
             _ => execute(&args[pos]),
         }
+        let duration = start.elapsed();
+        println!("Time elapsed in total {:?}", duration);
     }
 }
 
@@ -121,7 +125,7 @@ fn execute(path: &str) {
 
 fn build_bin(path: &str) {
     let file = read_in(path);
-    let mut stack = Vec::<char>::new();
+    let mut stack = Vec::<(char, u8)>::new();
     let chars: Vec<char> = file.chars().collect();
     let mut bytecode = Vec::<u8>::new();
     let mut progr = 0;
@@ -181,7 +185,6 @@ fn build_bin(path: &str) {
             }
             '[' => {
                 bytecode.push(7);
-                stack.push('[');
                 let mut unmatch = progr + 1;
                 let mut deep = 1;
                 loop {
@@ -198,12 +201,15 @@ fn build_bin(path: &str) {
                         panic!("Unmatched ]");
                     }
                 }
+                stack.push(('[', unmatch as u8));
+                bytecode.push(unmatch as u8);
             }
             ']' => {
                 let i = stack.last();
-                if let Some('[') = i {
-                    stack.pop();
+                if let Some(('[', val)) = i {
                     bytecode.push(8);
+                    bytecode.push(*val);
+                    stack.pop();
                 } else {
                     eprintln!("Unmatched ']'");
                     std::process::exit(1);
@@ -279,21 +285,7 @@ fn interpret(path: &str) {
             // [
             7 => {
                 if buffer[stc_ptr] == 0 {
-                    let mut deep = 1;
-                    progr += 1;
-                    loop {
-                        match file[progr] {
-                            3..=6 => progr += 1,
-                            7 => deep += 1,
-                            8 => deep -= 1,
-                            _ => (),
-                        }
-                        progr += 1;
-                        if deep == 0 {
-                            break;
-                        }
-                    }
-                    continue;
+                    stc_ptr = file[progr + 1] as usize;
                 } else {
                     stack.push((7, progr));
                 }
