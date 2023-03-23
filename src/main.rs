@@ -6,16 +6,32 @@ use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() <= 2 {
+        println!("-b: build Binary Code [].bbf\n-i: run created Binary [].bf\n-l Build it Using LLVM (Not Implemented (yet)) [].bf\n-r: Run the String Code [].bf");
+    }
     for pos in 2..args.len() {
-        let start = Instant::now();
         match &*args[1] {
-            "-b" => build_bin(&args[pos]),
+            "-b" => {
+                write(build_bin(&args[pos]), &args[pos]);
+            }
             "-i" => interpret(&args[pos]),
+            "-l" => llvm(&args[pos]),
+            "-bench" => {
+                let start = Instant::now();
+                for _ in 0..500000 {
+                    build_bin(&args[pos]);
+                }
+                let duration = start.elapsed();
+                println!(
+                    "Time elapsed in total {:?} for each operation in average {:?}",
+                    duration,
+                    duration / 500000
+                );
+            }
 
-            _ => execute(&args[pos]),
+            "-r" => execute(&args[pos]),
+            _ => (),
         }
-        let duration = start.elapsed();
-        println!("Time elapsed in total {:?}", duration);
     }
 }
 
@@ -37,6 +53,18 @@ fn read_byte(path: &str) -> Vec<u8> {
             std::process::exit(1);
         }
     }
+}
+fn write(bytes: Vec<u8>, path: &str) {
+    let mut out_file = match File::create(format!("{}.bbf", path)) {
+        Ok(val) => val,
+        Err(_) => match File::open(format!("{}.bbf", path)) {
+            Ok(val) => val,
+            Err(err) => {
+                panic!("{}", err);
+            }
+        },
+    };
+    out_file.write_all(&bytes[..]).expect("Fehler");
 }
 
 fn execute(path: &str) {
@@ -102,12 +130,11 @@ fn execute(path: &str) {
         progr += 1;
 
         if progr >= chars.len() {
-            //let s = match std::str::from_utf8(&out[..]) {
-            //    Ok(v) => v,
-            //    Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-            //};
-
-            //println!("output: {}", s);
+            let s = match std::str::from_utf8(&out[..]) {
+                Ok(v) => v,
+                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            };
+            println!("output: {}", s);
             break;
         }
     }
@@ -123,20 +150,20 @@ fn execute(path: &str) {
 ///   [ = 7   0  (START FOR LOOP)
 ///   ] = 8   0  (END FOR LOOP)
 
-fn build_bin(path: &str) {
+fn build_bin(path: &str) -> Vec<u8> {
     let file = read_in(path);
     let mut stack = Vec::<(char, u8)>::new();
-    let chars: Vec<char> = file.chars().collect();
+    let chars: Vec<u8> = file.bytes().collect();
     let mut bytecode = Vec::<u8>::new();
     let mut progr = 0;
 
     loop {
         match chars[progr] {
-            '.' => bytecode.push(1),
-            ',' => bytecode.push(2),
-            '<' => {
+            b'.' => bytecode.push(1),
+            b',' => bytecode.push(2),
+            b'<' => {
                 let mut left = progr + 1;
-                while let '<' = chars[left] {
+                while let b'<' = chars[left] {
                     left += 1;
                     if left >= chars.len() {
                         break;
@@ -146,9 +173,9 @@ fn build_bin(path: &str) {
                 bytecode.push((left - progr) as u8);
                 progr = left - 1;
             }
-            '>' => {
+            b'>' => {
                 let mut right = progr + 1;
-                while let '>' = chars[right] {
+                while let b'>' = chars[right] {
                     right += 1;
                     if right >= chars.len() {
                         break;
@@ -158,10 +185,9 @@ fn build_bin(path: &str) {
                 bytecode.push((right - progr) as u8);
                 progr = right - 1;
             }
-
-            '+' => {
+            b'+' => {
                 let mut plus = progr + 1;
-                while let '+' = chars[plus] {
+                while let b'+' = chars[plus] {
                     plus += 1;
                     if plus >= chars.len() {
                         break;
@@ -171,9 +197,9 @@ fn build_bin(path: &str) {
                 bytecode.push((plus - progr) as u8);
                 progr = plus - 1;
             }
-            '-' => {
+            b'-' => {
                 let mut minus = progr + 1;
-                while let '-' = chars[minus] {
+                while let b'-' = chars[minus] {
                     minus += 1;
                     if minus >= chars.len() {
                         break;
@@ -183,14 +209,14 @@ fn build_bin(path: &str) {
                 bytecode.push((minus - progr) as u8);
                 progr = minus - 1;
             }
-            '[' => {
+            b'[' => {
                 bytecode.push(7);
                 let mut unmatch = progr + 1;
                 let mut deep = 1;
                 loop {
                     match chars[unmatch] {
-                        '[' => deep += 1,
-                        ']' => deep -= 1,
+                        b'[' => deep += 1,
+                        b']' => deep -= 1,
                         _ => (),
                     }
                     unmatch += 1;
@@ -204,7 +230,7 @@ fn build_bin(path: &str) {
                 stack.push(('[', unmatch as u8));
                 bytecode.push(unmatch as u8);
             }
-            ']' => {
+            b']' => {
                 let i = stack.last();
                 if let Some(('[', val)) = i {
                     bytecode.push(8);
@@ -223,21 +249,7 @@ fn build_bin(path: &str) {
             break;
         }
     }
-    let start = Instant::now();
-    let mut out_file = match File::create(format!("{}.bbf", path)) {
-        Ok(val) => val,
-        Err(_) => match File::open(format!("{}.bbf", path)) {
-            Ok(val) => val,
-            Err(err) => {
-                panic!("{}", err);
-            }
-        },
-    };
-    let duration = start.elapsed();
-    println!("Time elapsed in total {:?}", duration);
-    for instr in bytecode {
-        out_file.write_all(&[instr]).unwrap();
-    }
+    return bytecode;
 }
 
 fn interpret(path: &str) {
@@ -311,15 +323,17 @@ fn interpret(path: &str) {
         progr += 1;
 
         if progr >= file.len() {
-            //let s = match std::str::from_utf8(&out[..]) {
-            //    Ok(v) => v,
-            //    Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-            //};
+            let s = match std::str::from_utf8(&out[..]) {
+                Ok(v) => v,
+                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            };
 
-            //println!("output: {}", s);
+            println!("output: {}", s);
             break;
         }
     }
 }
 
-fn llvm(path: String) {}
+fn llvm(path: &str) {
+    let _ = read_in(path);
+}
