@@ -102,12 +102,12 @@ fn execute(path: &str) {
         progr += 1;
 
         if progr >= chars.len() {
-            let s = match std::str::from_utf8(&out[..]) {
-                Ok(v) => v,
-                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-            };
+            //let s = match std::str::from_utf8(&out[..]) {
+            //    Ok(v) => v,
+            //    Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            //};
 
-            println!("output: {}", s);
+            //println!("output: {}", s);
             break;
         }
     }
@@ -223,6 +223,7 @@ fn build_bin(path: &str) {
             break;
         }
     }
+    let start = Instant::now();
     let mut out_file = match File::create(format!("{}.bbf", path)) {
         Ok(val) => val,
         Err(_) => match File::open(format!("{}.bbf", path)) {
@@ -232,7 +233,8 @@ fn build_bin(path: &str) {
             }
         },
     };
-    println!("{:#?}", bytecode);
+    let duration = start.elapsed();
+    println!("Time elapsed in total {:?}", duration);
     for instr in bytecode {
         out_file.write_all(&[instr]).unwrap();
     }
@@ -309,13 +311,15 @@ fn interpret(path: &str) {
         progr += 1;
 
         if progr >= file.len() {
-            let s = match std::str::from_utf8(&out[..]) {
-                Ok(v) => v,
-                Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-            };
+            //let s = match std::str::from_utf8(&out[..]) {
+            //    Ok(v) => v,
+            //    Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+            //};
 
-            println!("output: {}", s);
+            //println!("output: {}", s);
             break;
         }
     }
 }
+
+fn llvm(path: String) {}
