@@ -1,6 +1,6 @@
 use llvm_sys::{
-    core::{LLVMFunctionType, LLVMInt32TypeInContext, LLVMTypeOf, LLVMAddFunction, LLVMVoidType, LLVMSetParamAlignment, LLVMAddAttributeAtIndex, LLVMArrayType, LLVMInt8Type, LLVMPrintTypeToString, LLVMPrintModuleToString, LLVMPointerType, LLVMVoidTypeInContext, LLVMPointerTypeInContext, LLVMDumpModule, LLVMAppendBasicBlockInContext, LLVMPositionBuilderAtEnd, LLVMBuildMalloc, LLVMInt8TypeInContext, LLVMBuildArrayAlloca, LLVMConstInt, LLVMConstArray, LLVMBuildAlloca},
-    prelude::*,
+    core::{LLVMFunctionType, LLVMInt32TypeInContext, LLVMTypeOf, LLVMAddFunction, LLVMVoidType, LLVMSetParamAlignment, LLVMAddAttributeAtIndex, LLVMArrayType, LLVMInt8Type, LLVMPrintTypeToString, LLVMPrintModuleToString, LLVMPointerType, LLVMVoidTypeInContext, LLVMPointerTypeInContext, LLVMDumpModule, LLVMAppendBasicBlockInContext, LLVMPositionBuilderAtEnd, LLVMBuildMalloc, LLVMInt8TypeInContext, LLVMBuildArrayAlloca, LLVMConstInt, LLVMConstArray, LLVMBuildAlloca, LLVMBuildLoad, LLVMBuildStore, LLVMBuildAdd, LLVMBuildLoad2, LLVMBuildSub, LLVMGetParam, LLVMBuildGEP2},
+    prelude::*, LLVMValue,
 };
 
 use std::{fs::read, ptr::null_mut};
@@ -366,33 +366,100 @@ impl LLVM {
         let file = read_byte(path);
         let chars: Vec<u8> = read_byte(path);
         let mut ptr = 0;
-        let main_fn = self.create_main();
         unsafe{
-        let m_block = LLVMAppendBasicBlockInContext(self.ctx, main_fn, cstr("").as_ptr());
-        LLVMPositionBuilderAtEnd(self.builder, m_block);
-        let elem_type = LLVMArrayType(LLVMInt8TypeInContext(self.ctx), 30000);
-        let _array_ptr = LLVMBuildArrayAlloca(self.builder, elem_type, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 1, 0), cstr("array").as_ptr());
-        let _ptr = LLVMBuildAlloca(self.builder, LLVMInt8TypeInContext(self.ctx), cstr("ptr").as_ptr());
-        
-    }
-    }
+            let main_fn = self.create_fn("exec");
+            let arr = LLVMGetParam(main_fn, 0);
+            let m_block = LLVMAppendBasicBlockInContext(self.ctx, main_fn, cstr("").as_ptr());
+            LLVMPositionBuilderAtEnd(self.builder, m_block);
 
-    pub fn create_main(&self)-> LLVMValueRef{
-        unsafe{
-            let mut void = null_mut();
-            let mut fn_type = LLVMFunctionType(LLVMInt32TypeInContext(self.ctx), &mut void , 0 , 0);
-            return LLVMAddFunction(self.module, cstr("main").as_ptr(), fn_type);
+            let mut i_ptr = LLVMBuildAlloca(self.builder, LLVMInt8TypeInContext(self.ctx), cstr("ptr").as_ptr());
+            loop{
+                match chars[ptr]{
+                    b'>' => {
+                        let mut left = ptr + 1;
+                        while let b'>' = chars[left] {
+                            left += 1;
+                            if left >= chars.len() {
+                                break;
+                            }
+                        }
+                
+                        let ptr_value = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), i_ptr, cstr("").as_ptr());
+                        let addend = LLVMConstInt(LLVMInt8Type(), (left - ptr) as u64, 0);
+                        let new_value = LLVMBuildAdd(self.builder, ptr_value, addend, cstr("").as_ptr());
+                        LLVMBuildStore(self.builder, new_value, i_ptr);
+                        ptr = left - 1;
+                    }
+                    b'<' => {
+                        let mut left = ptr + 1;
+                        while let b'<' = chars[left] {
+                            left += 1;
+                            if left >= chars.len() {
+                                break;
+                            }
+                        }
+                
+                        let ptr_value = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), i_ptr, cstr("").as_ptr());
+                        let addend = LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (left - ptr) as u64, 0);
+                        let new_value = LLVMBuildSub(self.builder, ptr_value, addend, cstr("").as_ptr());
+                        LLVMBuildStore(self.builder, new_value, i_ptr);
+                        ptr = left - 1;
+                    }
+                    b'+' => {
+                        let mut plus = ptr + 1;
+                        while let b'+' = chars[plus] {
+                        plus += 1;
+                        if plus >= chars.len() {
+                                break;
+                            }
+                        }
+                        let arr_ptr = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx) , arr, cstr("").as_ptr());
+                        let elem_ptr = LLVMBuildGEP2(self.builder, LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0), arr_ptr,&mut i_ptr, 1, cstr("").as_ptr());
+                        let elem_value = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), elem_ptr, cstr("").as_ptr());
 
+                        // Finally, increase the value by one
+                        let new_value = LLVMBuildAdd(self.builder, elem_value, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (plus -ptr) as u64, 0), cstr("").as_ptr());
+                        LLVMBuildStore(self.builder, new_value, elem_ptr);
+                        ptr = plus -1;
+
+                    }
+                    b'-' => {
+                        let mut plus = ptr + 1;
+                        while let b'-' = chars[plus] {
+                        plus += 1;
+                        if plus >= chars.len() {
+                                break;
+                            }
+                        }
+                        let arr_ptr = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx) , arr, cstr("").as_ptr());
+                        let elem_ptr = LLVMBuildGEP2(self.builder, LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0), arr_ptr,&mut i_ptr, 1, cstr("").as_ptr());
+                        let elem_value = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), elem_ptr, cstr("").as_ptr());
+
+                        // Finally, increase the value by one
+                        let new_value = LLVMBuildSub(self.builder, elem_value, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (plus -ptr) as u64, 0), cstr("").as_ptr());
+                        LLVMBuildStore(self.builder, new_value, elem_ptr);
+                        ptr = plus -1;
+
+                    }
+
+                    b'.' => {
+
+                    },
+                    _ => (),
+                }
+                ptr += 1;
+                if ptr >= chars.len(){
+                    break;
+                }
+            }
         }
     }
 
-    pub fn create_fn(&mut self, name: &str){
+    pub fn create_fn(&mut self, name: &str)-> *mut LLVMValue{
         unsafe{
             let mut arry = LLVMPointerTypeInContext(self.ctx, 0);
             let mut fn_type = LLVMFunctionType(LLVMVoidTypeInContext(self.ctx), &mut arry, 1 , 0);
-            let mut func = LLVMAddFunction(self.module, cstr(name).as_ptr(), fn_type);
-            LLVMDumpModule(self.module);
-            
+            return LLVMAddFunction(self.module, cstr(name).as_ptr(), fn_type);
         }
     }
 
