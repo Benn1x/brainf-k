@@ -1,14 +1,22 @@
+use llvm_sys::{
+    core::{LLVMFunctionType, LLVMInt32TypeInContext, LLVMTypeOf, LLVMAddFunction, LLVMVoidType, LLVMSetParamAlignment, LLVMAddAttributeAtIndex, LLVMArrayType, LLVMInt8Type, LLVMPrintTypeToString, LLVMPrintModuleToString, LLVMPointerType, LLVMVoidTypeInContext, LLVMPointerTypeInContext, LLVMDumpModule, LLVMAppendBasicBlockInContext, LLVMPositionBuilderAtEnd, LLVMBuildMalloc, LLVMInt8TypeInContext, LLVMBuildArrayAlloca, LLVMConstInt, LLVMConstArray, LLVMBuildAlloca},
+    prelude::*,
+};
+
+use std::{fs::read, ptr::null_mut};
 use std::fs::File;
-use std::fs::{read, read_to_string};
 use std::io::prelude::*;
 use std::io::{stdin, Read};
 use std::time::Instant;
+
+use std::ffi::{CStr, CString};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 2 {
         println!("-b: build Binary Code [].bbf\n-i: run created Binary [].bf\n-l Build it Using LLVM (Not Implemented (yet)) [].bf\n-r: Run the String Code [].bf");
     }
+
     for pos in 2..args.len() {
         match &*args[1] {
             "-b" => {
@@ -35,16 +43,6 @@ fn main() {
     }
 }
 
-fn read_in(path: &str) -> String {
-    match read_to_string(path) {
-        Ok(val) => val,
-        Err(err) => {
-            eprintln!("Err: {}", err);
-            std::process::exit(1);
-        }
-    }
-}
-
 fn read_byte(path: &str) -> Vec<u8> {
     match read(path) {
         Ok(val) => val,
@@ -66,20 +64,18 @@ fn write(bytes: Vec<u8>, path: &str) {
     };
     out_file.write_all(&bytes[..]).expect("Fehler");
 }
-
 fn execute(path: &str) {
-    let file = read_in(path);
     let mut buffer: [u8; 30000] = [0; 30000];
     let mut stc_ptr = 0;
     let mut progr = 0;
-    let mut stack = Vec::<(char, usize)>::new();
-    let chars: Vec<char> = file.chars().collect();
+    let mut stack = Vec::<(u8, usize)>::new();
+    let chars: Vec<u8> = read_byte(path);
     let mut out: Vec<u8> = Vec::new();
     loop {
         let _chars = chars[progr];
         match _chars {
-            '.' => out.push(buffer[stc_ptr]),
-            ',' => {
+            b'.' => out.push(buffer[stc_ptr]),
+            b',' => {
                 buffer[stc_ptr] = match stdin().bytes().nth(0) {
                     Some(val) => match val {
                         Ok(val) => val,
@@ -88,18 +84,18 @@ fn execute(path: &str) {
                     None => std::process::exit(1),
                 }
             }
-            '<' => stc_ptr -= 1,
-            '>' => stc_ptr += 1,
-            '+' => buffer[stc_ptr] += 1,
-            '-' => buffer[stc_ptr] -= 1,
-            '[' => {
+            b'<' => stc_ptr -= 1,
+            b'>' => stc_ptr += 1,
+            b'+' => buffer[stc_ptr] += 1,
+            b'-' => buffer[stc_ptr] -= 1,
+            b'[' => {
                 if buffer[stc_ptr] == 0 {
                     let mut deep = 1;
                     progr += 1;
                     loop {
                         match chars[progr] {
-                            '[' => deep += 1,
-                            ']' => deep -= 1,
+                            b'[' => deep += 1,
+                            b']' => deep -= 1,
                             _ => (),
                         }
                         progr += 1;
@@ -109,12 +105,12 @@ fn execute(path: &str) {
                     }
                     continue;
                 } else {
-                    stack.push(('[', progr));
+                    stack.push((b'[', progr));
                 }
             }
-            ']' => {
+            b']' => {
                 let i = stack.last();
-                if let Some(('[', val)) = i {
+                if let Some((b'[', val)) = i {
                     if buffer[stc_ptr] != 0 {
                         progr = val + 1;
                     } else {
@@ -151,9 +147,8 @@ fn execute(path: &str) {
 ///   ] = 8   0  (END FOR LOOP)
 
 fn build_bin(path: &str) -> Vec<u8> {
-    let file = read_in(path);
     let mut stack = Vec::<(char, u8)>::new();
-    let chars: Vec<u8> = file.bytes().collect();
+    let chars: Vec<u8> = read_byte(path);
     let mut bytecode = Vec::<u8>::new();
     let mut progr = 0;
 
@@ -249,7 +244,7 @@ fn build_bin(path: &str) -> Vec<u8> {
             break;
         }
     }
-    return bytecode;
+    bytecode
 }
 
 fn interpret(path: &str) {
@@ -321,8 +316,8 @@ fn interpret(path: &str) {
             _ => (),
         }
         progr += 1;
-
-        if progr >= file.len() {
+       
+         if progr >= file.len() {
             let s = match std::str::from_utf8(&out[..]) {
                 Ok(v) => v,
                 Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
@@ -335,5 +330,74 @@ fn interpret(path: &str) {
 }
 
 fn llvm(path: &str) {
-    let _ = read_in(path);
+    let _ = read_byte(path);
+    let mut llvm = LLVM::new();
+    llvm.code_gen(path);
+    llvm.dump();
+
+}
+
+fn cstr(s: &str) -> Box<CStr> {
+    CString::new(s).unwrap().into_boxed_c_str()
+}
+
+struct LLVM {
+    ctx: LLVMContextRef,
+    builder: LLVMBuilderRef,
+    module: LLVMModuleRef,
+}
+
+impl LLVM {
+    fn new() -> LLVM {
+        let name = cstr("BrainFuck");
+        unsafe {
+            let ctx = llvm_sys::core::LLVMContextCreate();
+            let builder = llvm_sys::core::LLVMCreateBuilder();
+            let module = llvm_sys::core::LLVMModuleCreateWithNameInContext(name.as_ptr(), ctx);
+            LLVM {
+                ctx,
+                builder,
+                module,
+            }
+        }
+    }
+
+    pub fn code_gen(&mut self, path: &str) {
+        let file = read_byte(path);
+        let chars: Vec<u8> = read_byte(path);
+        let mut ptr = 0;
+        let main_fn = self.create_main();
+        unsafe{
+        let m_block = LLVMAppendBasicBlockInContext(self.ctx, main_fn, cstr("").as_ptr());
+        LLVMPositionBuilderAtEnd(self.builder, m_block);
+        let elem_type = LLVMArrayType(LLVMInt8TypeInContext(self.ctx), 30000);
+        let _array_ptr = LLVMBuildArrayAlloca(self.builder, elem_type, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 1, 0), cstr("array").as_ptr());
+        let _ptr = LLVMBuildAlloca(self.builder, LLVMInt8TypeInContext(self.ctx), cstr("ptr").as_ptr());
+        
+    }
+    }
+
+    pub fn create_main(&self)-> LLVMValueRef{
+        unsafe{
+            let mut void = null_mut();
+            let mut fn_type = LLVMFunctionType(LLVMInt32TypeInContext(self.ctx), &mut void , 0 , 0);
+            return LLVMAddFunction(self.module, cstr("main").as_ptr(), fn_type);
+
+        }
+    }
+
+    pub fn create_fn(&mut self, name: &str){
+        unsafe{
+            let mut arry = LLVMPointerTypeInContext(self.ctx, 0);
+            let mut fn_type = LLVMFunctionType(LLVMVoidTypeInContext(self.ctx), &mut arry, 1 , 0);
+            let mut func = LLVMAddFunction(self.module, cstr(name).as_ptr(), fn_type);
+            LLVMDumpModule(self.module);
+            
+        }
+    }
+
+    pub fn dump(&self){
+
+        unsafe {LLVMDumpModule(self.module);}
+    }
 }
