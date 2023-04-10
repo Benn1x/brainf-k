@@ -7,7 +7,7 @@ use llvm_sys::{
         LLVMVoidTypeInContext,
     },
     prelude::*,
-    target::LLVM_InitializeNativeTarget,
+    target::{LLVM_InitializeNativeTarget, LLVM_InitializeAllTargetInfos},
     target_machine::{LLVMCreateTargetMachine, LLVMGetFirstTarget, LLVMTargetMachineEmitToFile, LLVMGetDefaultTargetTriple},
     LLVMValue,
 };
@@ -604,16 +604,17 @@ impl LLVM {
     pub fn generate(&mut self) {
         unsafe {
             let mut error_str = null_mut();
+            let triple = LLVMGetDefaultTargetTriple();
             LLVM_InitializeNativeTarget();
             match LLVMTargetMachineEmitToFile(
                 LLVMCreateTargetMachine(
                     LLVMGetFirstTarget(),
-                    LLVMGetDefaultTargetTriple(),
+                    triple,
                     cstr("x86-64").as_ptr(),
                     cstr("").as_ptr(),
                     llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
-                    llvm_sys::target_machine::LLVMRelocMode::LLVMRelocPIC,
-                    llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelSmall,
+                    llvm_sys::target_machine::LLVMRelocMode::LLVMRelocDefault,
+                    llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
                 ),
                 self.module,
                 "exec.o".as_ptr() as *mut i8,
