@@ -1,13 +1,22 @@
 use llvm_sys::{
-    core::{LLVMFunctionType, LLVMInt32TypeInContext, LLVMTypeOf, LLVMAddFunction, LLVMVoidType, LLVMSetParamAlignment, LLVMAddAttributeAtIndex, LLVMArrayType, LLVMInt8Type, LLVMPrintTypeToString, LLVMPrintModuleToString, LLVMPointerType, LLVMVoidTypeInContext, LLVMPointerTypeInContext, LLVMDumpModule, LLVMAppendBasicBlockInContext, LLVMPositionBuilderAtEnd, LLVMBuildMalloc, LLVMInt8TypeInContext, LLVMBuildArrayAlloca, LLVMConstInt, LLVMConstArray, LLVMBuildAlloca, LLVMBuildLoad, LLVMBuildStore, LLVMBuildAdd, LLVMBuildLoad2, LLVMBuildSub, LLVMGetParam, LLVMBuildGEP2},
-    prelude::*, LLVMValue,
+    core::{
+        LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildAdd, LLVMBuildAlloca, LLVMBuildBr,
+        LLVMBuildCondBr, LLVMBuildGEP2, LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildStore,
+        LLVMBuildSub, LLVMConstInt, LLVMDumpModule, LLVMFunctionType, LLVMGetParam, LLVMInt8Type,
+        LLVMInt8TypeInContext, LLVMPointerType, LLVMPointerTypeInContext, LLVMPositionBuilderAtEnd,
+        LLVMVoidTypeInContext,
+    },
+    prelude::*,
+    target::LLVM_InitializeNativeTarget,
+    target_machine::{LLVMCreateTargetMachine, LLVMGetFirstTarget, LLVMTargetMachineEmitToFile, LLVMGetDefaultTargetTriple},
+    LLVMValue,
 };
 
-use std::{fs::read, ptr::null_mut};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{stdin, Read};
 use std::time::Instant;
+use std::{fs::read, ptr::null_mut};
 
 use std::ffi::{CStr, CString};
 
@@ -316,8 +325,8 @@ fn interpret(path: &str) {
             _ => (),
         }
         progr += 1;
-       
-         if progr >= file.len() {
+
+        if progr >= file.len() {
             let s = match std::str::from_utf8(&out[..]) {
                 Ok(v) => v,
                 Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
@@ -334,7 +343,7 @@ fn llvm(path: &str) {
     let mut llvm = LLVM::new();
     llvm.code_gen(path);
     llvm.dump();
-
+    llvm.generate();
 }
 
 fn cstr(s: &str) -> Box<CStr> {
@@ -363,18 +372,23 @@ impl LLVM {
     }
 
     pub fn code_gen(&mut self, path: &str) {
-        let file = read_byte(path);
         let chars: Vec<u8> = read_byte(path);
         let mut ptr = 0;
-        unsafe{
+        unsafe {
             let main_fn = self.create_fn("exec");
             let arr = LLVMGetParam(main_fn, 0);
             let m_block = LLVMAppendBasicBlockInContext(self.ctx, main_fn, cstr("").as_ptr());
+            let mut for_end = Vec::<LLVMBasicBlockRef>::new();
+            let mut jump = Vec::<LLVMBasicBlockRef>::new();
             LLVMPositionBuilderAtEnd(self.builder, m_block);
 
-            let mut i_ptr = LLVMBuildAlloca(self.builder, LLVMInt8TypeInContext(self.ctx), cstr("ptr").as_ptr());
-            loop{
-                match chars[ptr]{
+            let mut i_ptr = LLVMBuildAlloca(
+                self.builder,
+                LLVMInt8TypeInContext(self.ctx),
+                cstr("ptr").as_ptr(),
+            );
+            loop {
+                match chars[ptr] {
                     b'>' => {
                         let mut left = ptr + 1;
                         while let b'>' = chars[left] {
@@ -383,10 +397,16 @@ impl LLVM {
                                 break;
                             }
                         }
-                
-                        let ptr_value = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), i_ptr, cstr("").as_ptr());
+
+                        let ptr_value = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt8TypeInContext(self.ctx),
+                            i_ptr,
+                            cstr("").as_ptr(),
+                        );
                         let addend = LLVMConstInt(LLVMInt8Type(), (left - ptr) as u64, 0);
-                        let new_value = LLVMBuildAdd(self.builder, ptr_value, addend, cstr("").as_ptr());
+                        let new_value =
+                            LLVMBuildAdd(self.builder, ptr_value, addend, cstr("").as_ptr());
                         LLVMBuildStore(self.builder, new_value, i_ptr);
                         ptr = left - 1;
                     }
@@ -398,73 +418,228 @@ impl LLVM {
                                 break;
                             }
                         }
-                
-                        let ptr_value = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), i_ptr, cstr("").as_ptr());
-                        let addend = LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (left - ptr) as u64, 0);
-                        let new_value = LLVMBuildSub(self.builder, ptr_value, addend, cstr("").as_ptr());
+
+                        let ptr_value = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt8TypeInContext(self.ctx),
+                            i_ptr,
+                            cstr("").as_ptr(),
+                        );
+                        let addend =
+                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (left - ptr) as u64, 0);
+                        let new_value =
+                            LLVMBuildSub(self.builder, ptr_value, addend, cstr("").as_ptr());
                         LLVMBuildStore(self.builder, new_value, i_ptr);
                         ptr = left - 1;
                     }
                     b'+' => {
                         let mut plus = ptr + 1;
                         while let b'+' = chars[plus] {
-                        plus += 1;
-                        if plus >= chars.len() {
+                            plus += 1;
+                            if plus >= chars.len() {
                                 break;
                             }
                         }
-                        let arr_ptr = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx) , arr, cstr("").as_ptr());
-                        let elem_ptr = LLVMBuildGEP2(self.builder, LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0), arr_ptr,&mut i_ptr, 1, cstr("").as_ptr());
-                        let elem_value = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), elem_ptr, cstr("").as_ptr());
+                        let arr_ptr = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt8TypeInContext(self.ctx),
+                            arr,
+                            cstr("").as_ptr(),
+                        );
+                        let elem_ptr = LLVMBuildGEP2(
+                            self.builder,
+                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
+                            arr_ptr,
+                            &mut i_ptr,
+                            1,
+                            cstr("").as_ptr(),
+                        );
+                        let elem_value = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt8TypeInContext(self.ctx),
+                            elem_ptr,
+                            cstr("").as_ptr(),
+                        );
 
                         // Finally, increase the value by one
-                        let new_value = LLVMBuildAdd(self.builder, elem_value, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (plus -ptr) as u64, 0), cstr("").as_ptr());
+                        let new_value = LLVMBuildAdd(
+                            self.builder,
+                            elem_value,
+                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (plus - ptr) as u64, 0),
+                            cstr("").as_ptr(),
+                        );
                         LLVMBuildStore(self.builder, new_value, elem_ptr);
-                        ptr = plus -1;
-
+                        ptr = plus - 1;
                     }
                     b'-' => {
                         let mut plus = ptr + 1;
                         while let b'-' = chars[plus] {
-                        plus += 1;
-                        if plus >= chars.len() {
+                            plus += 1;
+                            if plus >= chars.len() {
                                 break;
                             }
                         }
-                        let arr_ptr = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx) , arr, cstr("").as_ptr());
-                        let elem_ptr = LLVMBuildGEP2(self.builder, LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0), arr_ptr,&mut i_ptr, 1, cstr("").as_ptr());
-                        let elem_value = LLVMBuildLoad2(self.builder, LLVMInt8TypeInContext(self.ctx), elem_ptr, cstr("").as_ptr());
+                        let arr_ptr = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt8TypeInContext(self.ctx),
+                            arr,
+                            cstr("").as_ptr(),
+                        );
+                        let elem_ptr = LLVMBuildGEP2(
+                            self.builder,
+                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
+                            arr_ptr,
+                            &mut i_ptr,
+                            1,
+                            cstr("").as_ptr(),
+                        );
+                        let elem_value = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt8TypeInContext(self.ctx),
+                            elem_ptr,
+                            cstr("").as_ptr(),
+                        );
 
                         // Finally, increase the value by one
-                        let new_value = LLVMBuildSub(self.builder, elem_value, LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (plus -ptr) as u64, 0), cstr("").as_ptr());
+                        let new_value = LLVMBuildSub(
+                            self.builder,
+                            elem_value,
+                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (plus - ptr) as u64, 0),
+                            cstr("").as_ptr(),
+                        );
                         LLVMBuildStore(self.builder, new_value, elem_ptr);
-                        ptr = plus -1;
+                        ptr = plus - 1;
+                    }
+                    b'[' => {
+                        // TODO: NESTED LOOPS GEHEN SO NICHT!!!!
+                        // Build Blocks
+                        let for_block = LLVMAppendBasicBlockInContext(
+                            self.ctx,
+                            main_fn,
+                            cstr("for-loop").as_ptr(),
+                        );
+                        LLVMBuildBr(self.builder, for_block);
+                        LLVMPositionBuilderAtEnd(self.builder, for_block);
+                        let for_end_block = LLVMAppendBasicBlockInContext(
+                            self.ctx,
+                            main_fn,
+                            cstr("for-end-loop").as_ptr(),
+                        );
+                        jump.push(for_block);
 
+                        //Build Jump
+                        let arr_ptr = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt8TypeInContext(self.ctx),
+                            arr,
+                            cstr("").as_ptr(),
+                        );
+                        let elem_ptr = LLVMBuildGEP2(
+                            self.builder,
+                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
+                            arr_ptr,
+                            &mut i_ptr,
+                            1,
+                            cstr("").as_ptr(),
+                        );
+                        let elem_value = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt8TypeInContext(self.ctx),
+                            elem_ptr,
+                            cstr("").as_ptr(),
+                        );
+
+                        let if_cond = LLVMBuildICmp(
+                            self.builder,
+                            llvm_sys::LLVMIntPredicate::LLVMIntEQ,
+                            elem_value,
+                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 0, 0),
+                            cstr("if").as_ptr(),
+                        );
+                        LLVMBuildCondBr(self.builder, if_cond, for_end_block, for_block);
+
+                        // update value
+                        let new_value = LLVMBuildSub(
+                            self.builder,
+                            elem_value,
+                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 1, 1),
+                            cstr("").as_ptr(),
+                        );
+                        LLVMBuildStore(self.builder, new_value, elem_ptr);
+                        // TODO: So?? Oder anders?
+                        for_end.push(for_end_block);
                     }
 
-                    b'.' => {
+                    b']' => {
+                        LLVMPositionBuilderAtEnd(
+                            self.builder,
+                            match for_end.pop() {
+                                Some(val) => val,
+                                None => panic!("Unmatched Paran"),
+                            },
+                        );
 
-                    },
+                        match jump.pop() {
+                            Some(val) => {
+                                LLVMBuildBr(self.builder, val);
+                            }
+                            None => (),
+                        }
+                    }
+
+                    b'.' => { // write
+                    }
+                    b',' => { // read
+                    }
                     _ => (),
                 }
                 ptr += 1;
-                if ptr >= chars.len(){
+                if ptr >= chars.len() {
                     break;
                 }
             }
         }
     }
 
-    pub fn create_fn(&mut self, name: &str)-> *mut LLVMValue{
-        unsafe{
+    pub fn generate(&mut self) {
+        unsafe {
+            let mut error_str = null_mut();
+            LLVM_InitializeNativeTarget();
+            match LLVMTargetMachineEmitToFile(
+                LLVMCreateTargetMachine(
+                    LLVMGetFirstTarget(),
+                    LLVMGetDefaultTargetTriple(),
+                    cstr("x86-64").as_ptr(),
+                    cstr("").as_ptr(),
+                    llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
+                    llvm_sys::target_machine::LLVMRelocMode::LLVMRelocPIC,
+                    llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelSmall,
+                ),
+                self.module,
+                "exec.o".as_ptr() as *mut i8,
+                llvm_sys::target_machine::LLVMCodeGenFileType::LLVMObjectFile,
+                &mut error_str,
+            ) {
+                1 => {
+                    let x = CStr::from_ptr(error_str);
+                    panic!("It failed! {:?}", x);
+                }
+                _ => println!("All Good"),
+            }
+        }
+    }
+
+    pub fn create_fn(&mut self, name: &str) -> *mut LLVMValue {
+        unsafe {
             let mut arry = LLVMPointerTypeInContext(self.ctx, 0);
-            let mut fn_type = LLVMFunctionType(LLVMVoidTypeInContext(self.ctx), &mut arry, 1 , 0);
+            let fn_type = LLVMFunctionType(LLVMVoidTypeInContext(self.ctx), &mut arry, 1, 0);
             return LLVMAddFunction(self.module, cstr(name).as_ptr(), fn_type);
         }
     }
 
-    pub fn dump(&self){
-
-        unsafe {LLVMDumpModule(self.module);}
+    pub fn dump(&self) {
+        unsafe {
+            LLVMDumpModule(self.module);
+        }
     }
 }
