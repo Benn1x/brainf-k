@@ -7,8 +7,14 @@ use llvm_sys::{
         LLVMVoidTypeInContext,
     },
     prelude::*,
-    target::{LLVM_InitializeNativeTarget, LLVM_InitializeAllTargetInfos},
-    target_machine::{LLVMCreateTargetMachine, LLVMGetFirstTarget, LLVMTargetMachineEmitToFile, LLVMGetDefaultTargetTriple},
+    target::{
+        LLVM_InitializeNativeAsmParser, LLVM_InitializeNativeAsmPrinter,
+        LLVM_InitializeNativeTarget,
+    },
+    target_machine::{
+        LLVMCreateTargetMachine, LLVMGetFirstTarget, LLVMGetTargetFromTriple,
+        LLVMTargetMachineEmitToFile,
+    },
     LLVMValue,
 };
 
@@ -20,10 +26,15 @@ use std::{fs::read, ptr::null_mut};
 
 use std::ffi::{CStr, CString};
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+// TODO: CLI
+//
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 2 {
-        println!("-b: build Binary Code [].bbf\n-i: run created Binary [].bf\n-l Build it Using LLVM (Not Implemented (yet)) [].bf\n-r: Run the String Code [].bf");
+        println!("-b: build Binary Code [].bbf\n-i: run created Binary [].bf\n-l Build it Using LLVM (Not Implemented (yet)) [].bf\n-r: Run the String Code [].bf\n You are using the Version {}", VERSION);
     }
 
     for pos in 2..args.len() {
@@ -45,6 +56,7 @@ fn main() {
                     duration / 500000
                 );
             }
+            "-v" => println!("{}", VERSION),
 
             "-r" => execute(&args[pos]),
             _ => (),
@@ -578,10 +590,10 @@ impl LLVM {
                                 None => panic!("Unmatched Paran"),
                             },
                         );
-
-                        match jump.pop() {
+                        jump.pop();
+                        match jump.last() {
                             Some(val) => {
-                                LLVMBuildBr(self.builder, val);
+                                LLVMBuildBr(self.builder, val.to_owned());
                             }
                             None => (),
                         }
@@ -604,13 +616,24 @@ impl LLVM {
     pub fn generate(&mut self) {
         unsafe {
             let mut error_str = null_mut();
-            let triple = LLVMGetDefaultTargetTriple();
+            let err = null_mut();
+
             LLVM_InitializeNativeTarget();
+            let mut target = LLVMGetFirstTarget();
+            if LLVMGetTargetFromTriple(
+                "x86_64-unknown-linux-gnu".as_ptr() as *const i8,
+                &mut target,
+                err,
+            ) == 1
+            {
+                let x = CStr::from_ptr(err as *const i8);
+                panic!("It failed at Creating a Target! {:?}", x);
+            }
             match LLVMTargetMachineEmitToFile(
                 LLVMCreateTargetMachine(
                     LLVMGetFirstTarget(),
-                    triple,
-                    cstr("x86-64").as_ptr(),
+                    "x86_64-unknown-linux-gnu".as_ptr() as *const i8,
+                    cstr("").as_ptr(),
                     cstr("").as_ptr(),
                     llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
                     llvm_sys::target_machine::LLVMRelocMode::LLVMRelocDefault,
@@ -623,9 +646,9 @@ impl LLVM {
             ) {
                 1 => {
                     let x = CStr::from_ptr(error_str);
-                    panic!("It failed! {:?}", x);
+                    panic!("Generating the Object File failed {:?}", x);
                 }
-                _ => println!("All Good"),
+                _ => (),
             }
         }
     }
