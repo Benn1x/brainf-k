@@ -7,10 +7,7 @@ use llvm_sys::{
         LLVMVoidTypeInContext,
     },
     prelude::*,
-    target::{
-        LLVM_InitializeNativeAsmParser, LLVM_InitializeNativeAsmPrinter,
-        LLVM_InitializeNativeTarget,
-    },
+    target::LLVM_InitializeNativeTarget,
     target_machine::{
         LLVMCreateTargetMachine, LLVMGetFirstTarget, LLVMGetTargetFromTriple,
         LLVMTargetMachineEmitToFile,
@@ -523,7 +520,6 @@ impl LLVM {
                         ptr = plus - 1;
                     }
                     b'[' => {
-                        // TODO: NESTED LOOPS GEHEN SO NICHT!!!!
                         // Build Blocks
                         let for_block = LLVMAppendBasicBlockInContext(
                             self.ctx,
@@ -578,7 +574,6 @@ impl LLVM {
                             cstr("").as_ptr(),
                         );
                         LLVMBuildStore(self.builder, new_value, elem_ptr);
-                        // TODO: So?? Oder anders?
                         for_end.push(for_end_block);
                     }
 
@@ -621,7 +616,7 @@ impl LLVM {
             LLVM_InitializeNativeTarget();
             let mut target = LLVMGetFirstTarget();
             if LLVMGetTargetFromTriple(
-                "x86_64-unknown-linux-gnu".as_ptr() as *const i8,
+                "x86_64-unknown-linux-gnu\0".as_ptr() as *const i8,
                 &mut target,
                 err,
             ) == 1
@@ -631,8 +626,8 @@ impl LLVM {
             }
             match LLVMTargetMachineEmitToFile(
                 LLVMCreateTargetMachine(
-                    LLVMGetFirstTarget(),
-                    "x86_64-unknown-linux-gnu".as_ptr() as *const i8,
+                    target,
+                    "x86_64-unknown-linux-gnu\0".as_ptr() as *const i8,
                     cstr("").as_ptr(),
                     cstr("").as_ptr(),
                     llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
@@ -640,7 +635,7 @@ impl LLVM {
                     llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
                 ),
                 self.module,
-                "exec.o".as_ptr() as *mut i8,
+                "exec.o\0".as_ptr() as *mut i8,
                 llvm_sys::target_machine::LLVMCodeGenFileType::LLVMObjectFile,
                 &mut error_str,
             ) {
