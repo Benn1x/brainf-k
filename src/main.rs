@@ -1,4 +1,5 @@
 use llvm_sys::{
+    analysis::LLVMVerifyModule,
     core::{
         LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildAdd, LLVMBuildAlloca, LLVMBuildBr,
         LLVMBuildCondBr, LLVMBuildGEP2, LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildStore,
@@ -7,7 +8,7 @@ use llvm_sys::{
         LLVMVoidTypeInContext,
     },
     prelude::*,
-    target::LLVM_InitializeNativeTarget,
+    target::{LLVM_InitializeNativeAsmPrinter, LLVM_InitializeNativeTarget},
     target_machine::{
         LLVMCreateTargetMachine, LLVMDisposeTargetMachine, LLVMGetFirstTarget,
         LLVMGetTargetFromTriple, LLVMTargetMachineEmitToFile,
@@ -451,7 +452,7 @@ impl LLVM {
                         }
                         let arr_ptr = LLVMBuildLoad2(
                             self.builder,
-                            LLVMInt8TypeInContext(self.ctx),
+                            LLVMPointerTypeInContext(self.ctx, 0),
                             arr,
                             cstr("").as_ptr(),
                         );
@@ -490,7 +491,7 @@ impl LLVM {
                         }
                         let arr_ptr = LLVMBuildLoad2(
                             self.builder,
-                            LLVMInt8TypeInContext(self.ctx),
+                            LLVMPointerTypeInContext(self.ctx, 0),
                             arr,
                             cstr("").as_ptr(),
                         );
@@ -538,7 +539,7 @@ impl LLVM {
                         //Build Jump
                         let arr_ptr = LLVMBuildLoad2(
                             self.builder,
-                            LLVMInt8TypeInContext(self.ctx),
+                            LLVMPointerTypeInContext(self.ctx, 0),
                             arr,
                             cstr("").as_ptr(),
                         );
@@ -610,10 +611,17 @@ impl LLVM {
 
     pub fn generate(&mut self) {
         unsafe {
-            let mut error_str = null_mut();
             let err = null_mut();
+            let mut err_s = null_mut();
+            LLVMVerifyModule(
+                self.module,
+                llvm_sys::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction,
+                &mut err_s,
+            );
+            let mut error_str = null_mut();
 
             LLVM_InitializeNativeTarget();
+            LLVM_InitializeNativeAsmPrinter();
             let mut target = LLVMGetFirstTarget();
             if LLVMGetTargetFromTriple(
                 "x86_64-unknown-linux-gnu\0".as_ptr() as *const i8,
