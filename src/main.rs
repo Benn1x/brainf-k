@@ -9,8 +9,8 @@ use llvm_sys::{
     prelude::*,
     target::LLVM_InitializeNativeTarget,
     target_machine::{
-        LLVMCreateTargetMachine, LLVMGetFirstTarget, LLVMGetTargetFromTriple,
-        LLVMTargetMachineEmitToFile,
+        LLVMCreateTargetMachine, LLVMDisposeTargetMachine, LLVMGetFirstTarget,
+        LLVMGetTargetFromTriple, LLVMTargetMachineEmitToFile,
     },
     LLVMValue,
 };
@@ -624,16 +624,17 @@ impl LLVM {
                 let x = CStr::from_ptr(err as *const i8);
                 panic!("It failed at Creating a Target! {:?}", x);
             }
+            let target_machine = LLVMCreateTargetMachine(
+                target,
+                "x86_64-unknown-linux-gnu\0".as_ptr() as *const i8,
+                cstr("").as_ptr(),
+                cstr("").as_ptr(),
+                llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
+                llvm_sys::target_machine::LLVMRelocMode::LLVMRelocDefault,
+                llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
+            );
             match LLVMTargetMachineEmitToFile(
-                LLVMCreateTargetMachine(
-                    target,
-                    "x86_64-unknown-linux-gnu\0".as_ptr() as *const i8,
-                    cstr("").as_ptr(),
-                    cstr("").as_ptr(),
-                    llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
-                    llvm_sys::target_machine::LLVMRelocMode::LLVMRelocDefault,
-                    llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
-                ),
+                target_machine,
                 self.module,
                 "exec.o\0".as_ptr() as *mut i8,
                 llvm_sys::target_machine::LLVMCodeGenFileType::LLVMObjectFile,
@@ -645,6 +646,7 @@ impl LLVM {
                 }
                 _ => (),
             }
+            LLVMDisposeTargetMachine(target_machine);
         }
     }
 
