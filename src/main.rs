@@ -5,7 +5,7 @@ use llvm_sys::{
         LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMArrayType, LLVMBuildAdd,
         LLVMBuildAlloca, LLVMBuildBr, LLVMBuildCall2, LLVMBuildCondBr, LLVMBuildGEP2,
         LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildRetVoid, LLVMBuildStore, LLVMBuildSub,
-        LLVMConstInt, LLVMConstPointerNull, LLVMDumpModule, LLVMFunctionType,
+        LLVMBuildTrunc, LLVMConstInt, LLVMConstPointerNull, LLVMDumpModule, LLVMFunctionType,
         LLVMGetFirstBasicBlock, LLVMGetParam, LLVMInt32TypeInContext, LLVMInt8Type,
         LLVMInt8TypeInContext, LLVMPointerType, LLVMPointerTypeInContext, LLVMPositionBuilderAtEnd,
         LLVMVoidTypeInContext,
@@ -643,7 +643,13 @@ impl LLVM {
                             0,
                             cstr("").as_ptr(),
                         );
-                        LLVMBuildStore(self.builder, input, elem_ptr);
+                        let trunc = LLVMBuildTrunc(
+                            self.builder,
+                            input,
+                            LLVMInt8TypeInContext(self.ctx),
+                            cstr("").as_ptr(),
+                        );
+                        LLVMBuildStore(self.builder, trunc, elem_ptr);
                     }
                     _ => (),
                 }
