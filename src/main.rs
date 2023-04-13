@@ -1,9 +1,12 @@
+#![deny(warnings)]
 use llvm_sys::{
     analysis::LLVMVerifyModule,
     core::{
-        LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildAdd, LLVMBuildAlloca, LLVMBuildBr,
-        LLVMBuildCondBr, LLVMBuildGEP2, LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildStore,
-        LLVMBuildSub, LLVMConstInt, LLVMDumpModule, LLVMFunctionType, LLVMGetParam, LLVMInt8Type,
+        LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMArrayType, LLVMBuildAdd,
+        LLVMBuildAlloca, LLVMBuildBr, LLVMBuildCall2, LLVMBuildCondBr, LLVMBuildGEP2,
+        LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildRetVoid, LLVMBuildStore, LLVMBuildSub,
+        LLVMConstInt, LLVMConstPointerNull, LLVMDumpModule, LLVMFunctionType,
+        LLVMGetFirstBasicBlock, LLVMGetParam, LLVMInt32TypeInContext, LLVMInt8Type,
         LLVMInt8TypeInContext, LLVMPointerType, LLVMPointerTypeInContext, LLVMPositionBuilderAtEnd,
         LLVMVoidTypeInContext,
     },
@@ -16,11 +19,11 @@ use llvm_sys::{
     LLVMValue,
 };
 
-use std::fs::File;
 use std::io::prelude::*;
 use std::io::{stdin, Read};
 use std::time::Instant;
 use std::{fs::read, ptr::null_mut};
+use std::{fs::File, process::Command};
 
 use std::ffi::{CStr, CString};
 
@@ -349,7 +352,6 @@ fn interpret(path: &str) {
 }
 
 fn llvm(path: &str) {
-    let _ = read_byte(path);
     let mut llvm = LLVM::new();
     llvm.code_gen(path);
     llvm.dump();
@@ -382,6 +384,7 @@ impl LLVM {
     }
 
     pub fn code_gen(&mut self, path: &str) {
+        // BASIC BLOCKS END WITH BR/OR RET STMT NEED TO REBUILD BLOCKS; + - DOES NOT WORK, IDK IF STORE OR LOAD IS THE PROBLEM
         let chars: Vec<u8> = read_byte(path);
         let mut ptr = 0;
         unsafe {
@@ -391,12 +394,29 @@ impl LLVM {
             let mut for_end = Vec::<LLVMBasicBlockRef>::new();
             let mut jump = Vec::<LLVMBasicBlockRef>::new();
             LLVMPositionBuilderAtEnd(self.builder, m_block);
+            let getchar_head = LLVMFunctionType(
+                LLVMInt32TypeInContext(self.ctx),
+                &mut LLVMVoidTypeInContext(self.ctx),
+                0,
+                1,
+            );
+            let putchar_head = LLVMFunctionType(
+                LLVMInt32TypeInContext(self.ctx),
+                &mut LLVMVoidTypeInContext(self.ctx),
+                0,
+                1,
+            );
+            let getchar = LLVMAddFunction(self.module, cstr("getchar").as_ptr(), getchar_head);
+            let putchar = LLVMAddFunction(self.module, cstr("putchar").as_ptr(), putchar_head);
 
             let mut i_ptr = LLVMBuildAlloca(
                 self.builder,
-                LLVMInt8TypeInContext(self.ctx),
+                LLVMInt32TypeInContext(self.ctx),
                 cstr("ptr").as_ptr(),
             );
+            let addend = LLVMConstInt(LLVMInt8Type(), 0 as u64, 0);
+            LLVMBuildStore(self.builder, addend, i_ptr);
+
             loop {
                 match chars[ptr] {
                     b'>' => {
@@ -414,7 +434,8 @@ impl LLVM {
                             i_ptr,
                             cstr("").as_ptr(),
                         );
-                        let addend = LLVMConstInt(LLVMInt8Type(), (left - ptr) as u64, 0);
+                        let addend =
+                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (left - ptr) as u64, 0);
                         let new_value =
                             LLVMBuildAdd(self.builder, ptr_value, addend, cstr("").as_ptr());
                         LLVMBuildStore(self.builder, new_value, i_ptr);
@@ -450,18 +471,12 @@ impl LLVM {
                                 break;
                             }
                         }
-                        let arr_ptr = LLVMBuildLoad2(
-                            self.builder,
-                            LLVMPointerTypeInContext(self.ctx, 0),
-                            arr,
-                            cstr("").as_ptr(),
-                        );
                         let elem_ptr = LLVMBuildGEP2(
                             self.builder,
                             LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
-                            arr_ptr,
+                            arr,
                             &mut i_ptr,
-                            1,
+                            0,
                             cstr("").as_ptr(),
                         );
                         let elem_value = LLVMBuildLoad2(
@@ -489,18 +504,12 @@ impl LLVM {
                                 break;
                             }
                         }
-                        let arr_ptr = LLVMBuildLoad2(
-                            self.builder,
-                            LLVMPointerTypeInContext(self.ctx, 0),
-                            arr,
-                            cstr("").as_ptr(),
-                        );
                         let elem_ptr = LLVMBuildGEP2(
                             self.builder,
                             LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
-                            arr_ptr,
+                            arr,
                             &mut i_ptr,
-                            1,
+                            0,
                             cstr("").as_ptr(),
                         );
                         let elem_value = LLVMBuildLoad2(
@@ -548,7 +557,7 @@ impl LLVM {
                             LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
                             arr_ptr,
                             &mut i_ptr,
-                            1,
+                            0,
                             cstr("").as_ptr(),
                         );
                         let elem_value = LLVMBuildLoad2(
@@ -595,14 +604,54 @@ impl LLVM {
                         }
                     }
 
-                    b'.' => { // write
+                    b'.' => {
+                        let mut elem_ptr = LLVMBuildGEP2(
+                            self.builder,
+                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
+                            arr,
+                            &mut i_ptr,
+                            0,
+                            cstr("").as_ptr(),
+                        );
+                        LLVMBuildCall2(
+                            self.builder,
+                            putchar_head,
+                            putchar,
+                            &mut elem_ptr,
+                            1,
+                            cstr("").as_ptr(),
+                        );
                     }
-                    b',' => { // read
+                    b',' => {
+                        let input = LLVMBuildCall2(
+                            self.builder,
+                            getchar_head,
+                            getchar,
+                            &mut LLVMConstPointerNull(LLVMArrayType(
+                                LLVMVoidTypeInContext(self.ctx),
+                                0,
+                            )),
+                            0,
+                            cstr("").as_ptr(),
+                        );
+
+                        let elem_ptr = LLVMBuildGEP2(
+                            self.builder,
+                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
+                            arr,
+                            &mut i_ptr,
+                            0,
+                            cstr("").as_ptr(),
+                        );
+                        LLVMBuildStore(self.builder, input, elem_ptr);
                     }
                     _ => (),
                 }
                 ptr += 1;
                 if ptr >= chars.len() {
+                    let block = LLVMGetFirstBasicBlock(main_fn);
+                    LLVMPositionBuilderAtEnd(self.builder, block);
+                    LLVMBuildRetVoid(self.builder);
                     break;
                 }
             }
@@ -613,11 +662,15 @@ impl LLVM {
         unsafe {
             let err = null_mut();
             let mut err_s = null_mut();
-            LLVMVerifyModule(
+            if LLVMVerifyModule(
                 self.module,
                 llvm_sys::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction,
                 &mut err_s,
-            );
+            ) == 1
+            {
+                let x = CStr::from_ptr(err_s);
+                panic!("Verifying the Module failed {:?}", x);
+            }
             let mut error_str = null_mut();
 
             LLVM_InitializeNativeTarget();
@@ -655,6 +708,11 @@ impl LLVM {
                 _ => (),
             }
             LLVMDisposeTargetMachine(target_machine);
+            Command::new("clang")
+                .arg("main.c")
+                .arg("exec.o")
+                .output()
+                .expect("Have You installed `clang' and have the main.c in scoop?");
         }
     }
 
