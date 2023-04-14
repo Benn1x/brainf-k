@@ -398,13 +398,13 @@ impl LLVM {
                 LLVMInt32TypeInContext(self.ctx),
                 &mut LLVMVoidTypeInContext(self.ctx),
                 0,
-                0,
+                1,
             );
             let putchar_head = LLVMFunctionType(
                 LLVMInt32TypeInContext(self.ctx),
-                &mut LLVMInt32TypeInContext(self.ctx),
-                1,
+                &mut LLVMVoidTypeInContext(self.ctx),
                 0,
+                1,
             );
             let getchar = LLVMAddFunction(self.module, cstr("getchar").as_ptr(), getchar_head);
             let putchar = LLVMAddFunction(self.module, cstr("putchar").as_ptr(), putchar_head);
@@ -605,7 +605,7 @@ impl LLVM {
                     }
 
                     b'.' => {
-                        let elem_ptr = LLVMBuildGEP2(
+                        let mut elem_ptr = LLVMBuildGEP2(
                             self.builder,
                             LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
                             arr,
@@ -613,17 +613,11 @@ impl LLVM {
                             0,
                             cstr("").as_ptr(),
                         );
-                        let mut trunc = LLVMBuildLoad2(
-                            self.builder,
-                            LLVMInt32TypeInContext(self.ctx),
-                            elem_ptr,
-                            cstr("").as_ptr(),
-                        );
                         LLVMBuildCall2(
                             self.builder,
                             putchar_head,
                             putchar,
-                            &mut trunc,
+                            &mut elem_ptr,
                             1,
                             cstr("").as_ptr(),
                         );
@@ -704,7 +698,7 @@ impl LLVM {
                 cstr("").as_ptr(),
                 llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
                 llvm_sys::target_machine::LLVMRelocMode::LLVMRelocDefault,
-                llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelSmall,
+                llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
             );
             match LLVMTargetMachineEmitToFile(
                 target_machine,
