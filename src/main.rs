@@ -3,12 +3,12 @@ use llvm_sys::{
     analysis::LLVMVerifyModule,
     core::{
         LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMArrayType, LLVMBuildAdd,
-        LLVMBuildAlloca, LLVMBuildBr, LLVMBuildCall2, LLVMBuildCondBr, LLVMBuildGEP2,
-        LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildRetVoid, LLVMBuildStore, LLVMBuildSub,
-        LLVMBuildTrunc, LLVMBuildZExt, LLVMConstInt, LLVMConstPointerNull, LLVMDumpModule,
-        LLVMFunctionType, LLVMGetFirstBasicBlock, LLVMGetParam, LLVMInt32TypeInContext,
-        LLVMInt64TypeInContext, LLVMInt8TypeInContext, LLVMPointerType, LLVMPointerTypeInContext,
-        LLVMPositionBuilderAtEnd, LLVMVoidTypeInContext,
+        LLVMBuildAlloca, LLVMBuildBr, LLVMBuildCall2, LLVMBuildCondBr, LLVMBuildFree,
+        LLVMBuildGEP2, LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildRetVoid, LLVMBuildStore,
+        LLVMBuildSub, LLVMBuildTrunc, LLVMBuildZExt, LLVMConstInt, LLVMConstPointerNull,
+        LLVMDumpModule, LLVMFunctionType, LLVMGetFirstBasicBlock, LLVMGetParam,
+        LLVMInt32TypeInContext, LLVMInt64TypeInContext, LLVMInt8TypeInContext, LLVMPointerType,
+        LLVMPointerTypeInContext, LLVMPositionBuilderAtEnd, LLVMVoidTypeInContext,
     },
     prelude::*,
     target::{LLVM_InitializeNativeAsmPrinter, LLVM_InitializeNativeTarget},
@@ -735,6 +735,7 @@ impl LLVM {
                 }
                 ptr += 1;
                 if ptr >= chars.len() {
+                    LLVMBuildFree(self.builder, arr);
                     let block = LLVMGetFirstBasicBlock(main_fn);
                     LLVMPositionBuilderAtEnd(self.builder, block);
                     LLVMBuildRetVoid(self.builder);
