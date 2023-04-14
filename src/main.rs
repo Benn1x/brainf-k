@@ -716,17 +716,23 @@ impl LLVM {
                         LLVMBuildStore(self.builder, trunc, elem_ptr);
                     }
                     b'*' => {
-                        let mut trunc = LLVMBuildLoad2(
+                        let trunc = LLVMBuildLoad2(
                             self.builder,
                             LLVMInt32TypeInContext(self.ctx),
                             i_ptr,
+                            cstr("").as_ptr(),
+                        );
+                        let mut add = LLVMBuildAdd(
+                            self.builder,
+                            trunc,
+                            LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 48, 0),
                             cstr("").as_ptr(),
                         );
                         LLVMBuildCall2(
                             self.builder,
                             putchar_head,
                             putchar,
-                            &mut trunc,
+                            &mut add,
                             1,
                             cstr("").as_ptr(),
                         );
@@ -777,9 +783,9 @@ impl LLVM {
                 "x86_64-unknown-linux-gnu\0".as_ptr() as *const i8,
                 cstr("").as_ptr(),
                 cstr("").as_ptr(),
-                llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelNone,
-                llvm_sys::target_machine::LLVMRelocMode::LLVMRelocDefault,
-                llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
+                llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
+                llvm_sys::target_machine::LLVMRelocMode::LLVMRelocStatic,
+                llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelSmall,
             );
             match LLVMTargetMachineEmitToFile(
                 target_machine,
