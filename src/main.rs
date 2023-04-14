@@ -5,10 +5,10 @@ use llvm_sys::{
         LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMArrayType, LLVMBuildAdd,
         LLVMBuildAlloca, LLVMBuildBr, LLVMBuildCall2, LLVMBuildCondBr, LLVMBuildGEP2,
         LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildRetVoid, LLVMBuildStore, LLVMBuildSub,
-        LLVMBuildTrunc, LLVMConstInt, LLVMConstPointerNull, LLVMDumpModule, LLVMFunctionType,
-        LLVMGetFirstBasicBlock, LLVMGetParam, LLVMInt32TypeInContext, LLVMInt8Type,
-        LLVMInt8TypeInContext, LLVMPointerType, LLVMPointerTypeInContext, LLVMPositionBuilderAtEnd,
-        LLVMVoidTypeInContext,
+        LLVMBuildTrunc, LLVMBuildZExt, LLVMConstInt, LLVMConstPointerNull, LLVMDumpModule,
+        LLVMFunctionType, LLVMGetFirstBasicBlock, LLVMGetParam, LLVMInt32TypeInContext,
+        LLVMInt64TypeInContext, LLVMInt8TypeInContext, LLVMPointerType, LLVMPointerTypeInContext,
+        LLVMPositionBuilderAtEnd, LLVMVoidTypeInContext,
     },
     prelude::*,
     target::{LLVM_InitializeNativeAsmPrinter, LLVM_InitializeNativeTarget},
@@ -384,7 +384,7 @@ impl LLVM {
     }
 
     pub fn code_gen(&mut self, path: &str) {
-        // BASIC BLOCKS END WITH BR/OR RET STMT NEED TO REBUILD BLOCKS; + - DOES NOT WORK, IDK IF STORE OR LOAD IS THE PROBLEM
+        // BASIC BLOCKS END WITH BR/OR RET STMT NEED TO REBUILD BLOCKS; < > Does not work properly
         let chars: Vec<u8> = read_byte(path);
         let mut ptr = 0;
         unsafe {
@@ -398,13 +398,13 @@ impl LLVM {
                 LLVMInt32TypeInContext(self.ctx),
                 &mut LLVMVoidTypeInContext(self.ctx),
                 0,
-                1,
+                0,
             );
             let putchar_head = LLVMFunctionType(
                 LLVMInt32TypeInContext(self.ctx),
-                &mut LLVMVoidTypeInContext(self.ctx),
-                0,
+                &mut LLVMInt32TypeInContext(self.ctx),
                 1,
+                0,
             );
             let getchar = LLVMAddFunction(self.module, cstr("getchar").as_ptr(), getchar_head);
             let putchar = LLVMAddFunction(self.module, cstr("putchar").as_ptr(), putchar_head);
@@ -414,7 +414,7 @@ impl LLVM {
                 LLVMInt32TypeInContext(self.ctx),
                 cstr("ptr").as_ptr(),
             );
-            let addend = LLVMConstInt(LLVMInt8Type(), 0 as u64, 0);
+            let addend = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0 as u64, 0);
             LLVMBuildStore(self.builder, addend, i_ptr);
 
             loop {
@@ -430,12 +430,12 @@ impl LLVM {
 
                         let ptr_value = LLVMBuildLoad2(
                             self.builder,
-                            LLVMInt8TypeInContext(self.ctx),
+                            LLVMInt32TypeInContext(self.ctx),
                             i_ptr,
                             cstr("").as_ptr(),
                         );
                         let addend =
-                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (left - ptr) as u64, 0);
+                            LLVMConstInt(LLVMInt32TypeInContext(self.ctx), (left - ptr) as u64, 0);
                         let new_value =
                             LLVMBuildAdd(self.builder, ptr_value, addend, cstr("").as_ptr());
                         LLVMBuildStore(self.builder, new_value, i_ptr);
@@ -452,12 +452,13 @@ impl LLVM {
 
                         let ptr_value = LLVMBuildLoad2(
                             self.builder,
-                            LLVMInt8TypeInContext(self.ctx),
+                            LLVMInt32TypeInContext(self.ctx),
                             i_ptr,
                             cstr("").as_ptr(),
                         );
+
                         let addend =
-                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), (left - ptr) as u64, 0);
+                            LLVMConstInt(LLVMInt32TypeInContext(self.ctx), (left - ptr) as u64, 0);
                         let new_value =
                             LLVMBuildSub(self.builder, ptr_value, addend, cstr("").as_ptr());
                         LLVMBuildStore(self.builder, new_value, i_ptr);
@@ -471,12 +472,26 @@ impl LLVM {
                                 break;
                             }
                         }
+                        let pos = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt32TypeInContext(self.ctx),
+                            i_ptr,
+                            cstr("").as_ptr(),
+                        );
+
+                        let mut prm = LLVMBuildZExt(
+                            self.builder,
+                            pos,
+                            LLVMInt64TypeInContext(self.ctx),
+                            cstr("").as_ptr(),
+                        );
+
                         let elem_ptr = LLVMBuildGEP2(
                             self.builder,
-                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
+                            LLVMInt8TypeInContext(self.ctx),
                             arr,
-                            &mut i_ptr,
-                            0,
+                            &mut prm,
+                            1,
                             cstr("").as_ptr(),
                         );
                         let elem_value = LLVMBuildLoad2(
@@ -504,12 +519,26 @@ impl LLVM {
                                 break;
                             }
                         }
+                        let pos = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt32TypeInContext(self.ctx),
+                            i_ptr,
+                            cstr("").as_ptr(),
+                        );
+
+                        let mut prm = LLVMBuildZExt(
+                            self.builder,
+                            pos,
+                            LLVMInt64TypeInContext(self.ctx),
+                            cstr("").as_ptr(),
+                        );
+
                         let elem_ptr = LLVMBuildGEP2(
                             self.builder,
-                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
+                            LLVMInt8TypeInContext(self.ctx),
                             arr,
-                            &mut i_ptr,
-                            0,
+                            &mut prm,
+                            1,
                             cstr("").as_ptr(),
                         );
                         let elem_value = LLVMBuildLoad2(
@@ -605,19 +634,40 @@ impl LLVM {
                     }
 
                     b'.' => {
-                        let mut elem_ptr = LLVMBuildGEP2(
+                        let pos = LLVMBuildLoad2(
                             self.builder,
-                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
+                            LLVMInt32TypeInContext(self.ctx),
+                            i_ptr,
+                            cstr("").as_ptr(),
+                        );
+
+                        let mut prm = LLVMBuildZExt(
+                            self.builder,
+                            pos,
+                            LLVMInt64TypeInContext(self.ctx),
+                            cstr("").as_ptr(),
+                        );
+
+                        let elem_ptr = LLVMBuildGEP2(
+                            self.builder,
+                            LLVMInt8TypeInContext(self.ctx),
                             arr,
-                            &mut i_ptr,
-                            0,
+                            &mut prm,
+                            1,
+                            cstr("").as_ptr(),
+                        );
+
+                        let mut trunc = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt32TypeInContext(self.ctx),
+                            elem_ptr,
                             cstr("").as_ptr(),
                         );
                         LLVMBuildCall2(
                             self.builder,
                             putchar_head,
                             putchar,
-                            &mut elem_ptr,
+                            &mut trunc,
                             1,
                             cstr("").as_ptr(),
                         );
@@ -635,12 +685,26 @@ impl LLVM {
                             cstr("").as_ptr(),
                         );
 
+                        let pos = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt32TypeInContext(self.ctx),
+                            i_ptr,
+                            cstr("").as_ptr(),
+                        );
+
+                        let mut prm = LLVMBuildZExt(
+                            self.builder,
+                            pos,
+                            LLVMInt64TypeInContext(self.ctx),
+                            cstr("").as_ptr(),
+                        );
+
                         let elem_ptr = LLVMBuildGEP2(
                             self.builder,
-                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
+                            LLVMInt8TypeInContext(self.ctx),
                             arr,
-                            &mut i_ptr,
-                            0,
+                            &mut prm,
+                            1,
                             cstr("").as_ptr(),
                         );
                         let trunc = LLVMBuildTrunc(
@@ -650,6 +714,22 @@ impl LLVM {
                             cstr("").as_ptr(),
                         );
                         LLVMBuildStore(self.builder, trunc, elem_ptr);
+                    }
+                    b'*' => {
+                        let mut trunc = LLVMBuildLoad2(
+                            self.builder,
+                            LLVMInt32TypeInContext(self.ctx),
+                            i_ptr,
+                            cstr("").as_ptr(),
+                        );
+                        LLVMBuildCall2(
+                            self.builder,
+                            putchar_head,
+                            putchar,
+                            &mut trunc,
+                            1,
+                            cstr("").as_ptr(),
+                        );
                     }
                     _ => (),
                 }
@@ -696,7 +776,7 @@ impl LLVM {
                 "x86_64-unknown-linux-gnu\0".as_ptr() as *const i8,
                 cstr("").as_ptr(),
                 cstr("").as_ptr(),
-                llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelAggressive,
+                llvm_sys::target_machine::LLVMCodeGenOptLevel::LLVMCodeGenLevelNone,
                 llvm_sys::target_machine::LLVMRelocMode::LLVMRelocDefault,
                 llvm_sys::target_machine::LLVMCodeModel::LLVMCodeModelDefault,
             );
