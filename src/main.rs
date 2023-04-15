@@ -35,7 +35,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 2 {
-        println!("-b: build Binary Code [].bbf\n-i: run created Binary [].bf\n-l Build it Using LLVM (Not Implemented (yet)) [].bf\n-r: Run the String Code [].bf\n You are using the Version {}", VERSION);
+        println!("-b: build Binary Code [].bbf\n-i: run created Binary [].bf\n-l Build it Using LLVM (Please dont use loops xD, everything else works) [].bf\n-r: Run the String Code [].bf\n You are using the Version {}", VERSION);
     }
 
     for pos in 2..args.len() {
@@ -44,7 +44,13 @@ fn main() {
                 write(build_bin(&args[pos]), &args[pos]);
             }
             "-i" => interpret(&args[pos]),
-            "-l" => llvm(&args[pos]),
+            "-l" => {
+                if &args[pos] == "info" {
+                    println!("Requirements:\n\t-clang\n\t-the main.c or your own: https://github.com/Benn1x/brainf-k/blob/master/main.c");
+                } else {
+                    llvm(&args[pos])
+                }
+            }
             "-bench" => {
                 let start = Instant::now();
                 for _ in 0..500000 {
