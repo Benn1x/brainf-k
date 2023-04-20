@@ -1,4 +1,4 @@
-#![deny(warnings)]
+//#![deny(warnings)]
 use llvm_sys::{
     analysis::LLVMVerifyModule,
     core::{
@@ -390,7 +390,7 @@ impl LLVM {
     }
 
     pub fn code_gen(&mut self, path: &str) {
-        // BASIC BLOCKS END WITH BR/OR RET STMT NEED TO REBUILD BLOCKS; < > Does not work properly
+        // BASIC BLOCKS END WITH BR/OR RET STMT NEED TO REBUILD BLOCKS
         let chars: Vec<u8> = read_byte(path);
         let mut ptr = 0;
         unsafe {
@@ -400,12 +400,7 @@ impl LLVM {
             let mut for_end = Vec::<LLVMBasicBlockRef>::new();
             let mut jump = Vec::<LLVMBasicBlockRef>::new();
             LLVMPositionBuilderAtEnd(self.builder, m_block);
-            let getchar_head = LLVMFunctionType(
-                LLVMInt32TypeInContext(self.ctx),
-                &mut LLVMVoidTypeInContext(self.ctx),
-                0,
-                0,
-            );
+            let getchar_head = LLVMFunctionType(LLVMInt32TypeInContext(self.ctx), null_mut(), 0, 0);
             let putchar_head = LLVMFunctionType(
                 LLVMInt32TypeInContext(self.ctx),
                 &mut LLVMInt32TypeInContext(self.ctx),
@@ -565,78 +560,21 @@ impl LLVM {
                         ptr = plus - 1;
                     }
                     b'[' => {
-                        // Build Blocks
-                        let for_block = LLVMAppendBasicBlockInContext(
-                            self.ctx,
-                            main_fn,
-                            cstr("for-loop").as_ptr(),
-                        );
-                        LLVMBuildBr(self.builder, for_block);
-                        LLVMPositionBuilderAtEnd(self.builder, for_block);
-                        let for_end_block = LLVMAppendBasicBlockInContext(
-                            self.ctx,
-                            main_fn,
-                            cstr("for-end-loop").as_ptr(),
-                        );
-                        jump.push(for_block);
-
-                        //Build Jump
-                        let arr_ptr = LLVMBuildLoad2(
-                            self.builder,
-                            LLVMPointerTypeInContext(self.ctx, 0),
-                            arr,
-                            cstr("").as_ptr(),
-                        );
-                        let elem_ptr = LLVMBuildGEP2(
-                            self.builder,
-                            LLVMPointerType(LLVMInt8TypeInContext(self.ctx), 0),
-                            arr_ptr,
-                            &mut i_ptr,
-                            0,
-                            cstr("").as_ptr(),
-                        );
-                        let elem_value = LLVMBuildLoad2(
-                            self.builder,
-                            LLVMInt8TypeInContext(self.ctx),
-                            elem_ptr,
-                            cstr("").as_ptr(),
-                        );
-
-                        let if_cond = LLVMBuildICmp(
-                            self.builder,
-                            llvm_sys::LLVMIntPredicate::LLVMIntEQ,
-                            elem_value,
-                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 0, 0),
-                            cstr("if").as_ptr(),
-                        );
-                        LLVMBuildCondBr(self.builder, if_cond, for_end_block, for_block);
-
-                        // update value
-                        let new_value = LLVMBuildSub(
-                            self.builder,
-                            elem_value,
-                            LLVMConstInt(LLVMInt8TypeInContext(self.ctx), 1, 1),
-                            cstr("").as_ptr(),
-                        );
-                        LLVMBuildStore(self.builder, new_value, elem_ptr);
-                        for_end.push(for_end_block);
+                        // Build Blocks USE PHI NODES
+                        // let for_block = LLVMAppendBasicBlockInContext(
+                        //     self.ctx,
+                        //     main_fn,
+                        //     cstr("for-loop").as_ptr(),
+                        // );
+                        // LLVMBuildBr(self.builder, for_block);
+                        // COND IF CURRENT IS 0, IF SO: JUMP TO END OF THE LOOP OTHERWISE JUMP TO LOOP EXEC
+                        // LLVMBuildCondBr(self.builder, if_cond, for_end_block, for_block);
+                        // END: DECREASE BY VALUE BY 1, JUMPBACK TO START OF THE FORLOOP -
                     }
 
                     b']' => {
-                        LLVMPositionBuilderAtEnd(
-                            self.builder,
-                            match for_end.pop() {
-                                Some(val) => val,
-                                None => panic!("Unmatched Paran"),
-                            },
-                        );
-                        jump.pop();
-                        match jump.last() {
-                            Some(val) => {
-                                LLVMBuildBr(self.builder, val.to_owned());
-                            }
-                            None => (),
-                        }
+                        // CHECK IF UNMATCHED
+                        // GET NEXT BLOCK TO JUMP TO
                     }
 
                     b'.' => {
@@ -683,10 +621,7 @@ impl LLVM {
                             self.builder,
                             getchar_head,
                             getchar,
-                            &mut LLVMConstPointerNull(LLVMArrayType(
-                                LLVMVoidTypeInContext(self.ctx),
-                                0,
-                            )),
+                            &mut LLVMConstPointerNull(LLVMVoidTypeInContext(self.ctx)),
                             0,
                             cstr("").as_ptr(),
                         );
