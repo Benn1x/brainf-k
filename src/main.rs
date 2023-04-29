@@ -66,6 +66,9 @@ fn main() {
             "-v" => println!("{}", VERSION),
 
             "-r" => execute(&args[pos]),
+            "-d" => {
+                println!("{}", String::from_utf8_lossy(&read_byte(&args[pos])));
+            }
             _ => (),
         }
     }
@@ -397,8 +400,8 @@ impl LLVM {
             let main_fn = self.create_fn("exec");
             let arr = LLVMGetParam(main_fn, 0);
             let m_block = LLVMAppendBasicBlockInContext(self.ctx, main_fn, cstr("").as_ptr());
-            let mut for_end = Vec::<LLVMBasicBlockRef>::new();
-            let mut jump = Vec::<LLVMBasicBlockRef>::new();
+            let _for_end = Vec::<LLVMBasicBlockRef>::new();
+            let _jump = Vec::<LLVMBasicBlockRef>::new();
             LLVMPositionBuilderAtEnd(self.builder, m_block);
             let getchar_head = LLVMFunctionType(LLVMInt32TypeInContext(self.ctx), null_mut(), 0, 0);
             let putchar_head = LLVMFunctionType(
@@ -410,7 +413,7 @@ impl LLVM {
             let getchar = LLVMAddFunction(self.module, cstr("getchar").as_ptr(), getchar_head);
             let putchar = LLVMAddFunction(self.module, cstr("putchar").as_ptr(), putchar_head);
 
-            let mut i_ptr = LLVMBuildAlloca(
+            let i_ptr = LLVMBuildAlloca(
                 self.builder,
                 LLVMInt32TypeInContext(self.ctx),
                 cstr("ptr").as_ptr(),
@@ -745,6 +748,8 @@ impl LLVM {
             Command::new("clang")
                 .arg("main.c")
                 .arg("exec.o")
+                .arg("-o")
+                .arg("exec")
                 .output()
                 .expect("Have You installed `clang' and have the main.c in scoop?");
         }
