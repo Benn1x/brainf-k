@@ -143,7 +143,7 @@ fn execute(path: &str) {
                 let i = stack.last();
                 if let Some((b'[', val)) = i {
                     if buffer[stc_ptr] != 0 {
-                        progr = val + 1;
+                        progr = *val;
                     } else {
                         stack.pop();
                     }
