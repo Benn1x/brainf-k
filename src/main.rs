@@ -115,10 +115,10 @@ fn execute(path: &str) {
                     None => std::process::exit(1),
                 }
             }
-            b'<' => stc_ptr -= 1,
-            b'>' => stc_ptr += 1,
-            b'+' => buffer[stc_ptr] += 1,
-            b'-' => buffer[stc_ptr] -= 1,
+            b'<' => stc_ptr = stc_ptr.wrapping_sub(1),
+            b'>' => stc_ptr = stc_ptr.wrapping_add(1),
+            b'+' => buffer[stc_ptr] = buffer[stc_ptr].wrapping_add(1),
+            b'-' => buffer[stc_ptr] = buffer[stc_ptr].wrapping_sub(1),
             b'[' => {
                 if buffer[stc_ptr] == 0 {
                     let mut deep = 1;
@@ -302,24 +302,24 @@ fn interpret(path: &str) {
             }
             // <
             3 => {
-                stc_ptr -= file[progr + 1] as usize;
+                stc_ptr = stc_ptr.wrapping_sub(file[progr + 1] as usize);
 
                 progr += 1;
             }
             // >
             4 => {
-                stc_ptr += file[progr + 1] as usize;
+                stc_ptr = stc_ptr.wrapping_add(file[progr + 1] as usize);
 
                 progr += 1;
             }
             // +
             5 => {
-                buffer[stc_ptr] += file[progr + 1];
+                buffer[stc_ptr] = buffer[stc_ptr].wrapping_add(file[progr + 1]);
                 progr += 1;
             }
             // -
             6 => {
-                buffer[stc_ptr] -= file[progr + 1];
+                buffer[stc_ptr] = buffer[stc_ptr].wrapping_sub(file[progr + 1]);
                 progr += 1;
             }
             // [
