@@ -2,12 +2,11 @@
 use llvm_sys::{
     analysis::LLVMVerifyModule,
     core::{
-        LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMArrayType, LLVMBuildAdd,
-        LLVMBuildAlloca, LLVMBuildBr, LLVMBuildCall2, LLVMBuildCondBr, LLVMBuildFree,
-        LLVMBuildGEP2, LLVMBuildICmp, LLVMBuildLoad2, LLVMBuildRetVoid, LLVMBuildStore,
-        LLVMBuildSub, LLVMBuildTrunc, LLVMBuildZExt, LLVMConstInt, LLVMConstPointerNull,
-        LLVMDumpModule, LLVMFunctionType, LLVMGetFirstBasicBlock, LLVMGetParam,
-        LLVMInt32TypeInContext, LLVMInt64TypeInContext, LLVMInt8TypeInContext, LLVMPointerType,
+        LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildAdd, LLVMBuildAlloca,
+        LLVMBuildCall2, LLVMBuildFree, LLVMBuildGEP2, LLVMBuildLoad2, LLVMBuildRetVoid,
+        LLVMBuildStore, LLVMBuildSub, LLVMBuildTrunc, LLVMBuildZExt, LLVMConstInt,
+        LLVMConstPointerNull, LLVMDumpModule, LLVMFunctionType, LLVMGetFirstBasicBlock,
+        LLVMGetParam, LLVMInt32TypeInContext, LLVMInt64TypeInContext, LLVMInt8TypeInContext,
         LLVMPointerTypeInContext, LLVMPositionBuilderAtEnd, LLVMVoidTypeInContext,
     },
     prelude::*,
@@ -46,22 +45,36 @@ fn main() {
             "-i" => interpret(&args[pos]),
             "-l" => {
                 if &args[pos] == "info" {
-                    println!("Requirements:\n\t-clang\n\t-the main.c or your own: https://github.com/Benn1x/brainf-k/blob/master/main.c");
+                    println!("Requirements:\n\t-clang\n\t-the main.c https://github.com/Benn1x/brainf-k/blob/master/main.c or your own");
                 } else {
                     llvm(&args[pos])
                 }
             }
             "-bench" => {
-                let start = Instant::now();
-                for _ in 0..500000 {
-                    build_bin(&args[pos]);
+                if &args[pos] == "build" {
+                    let start = Instant::now();
+                    for _ in 0..500000 {
+                        build_bin(&args[pos + 1]);
+                    }
+                    let duration = start.elapsed();
+                    println!(
+                        "Time elapsed in total {:?} for each operation in average {:?}",
+                        duration,
+                        duration / 500000
+                    );
                 }
-                let duration = start.elapsed();
-                println!(
-                    "Time elapsed in total {:?} for each operation in average {:?}",
-                    duration,
-                    duration / 500000
-                );
+                if &args[pos] == "exec" {
+                    let start = Instant::now();
+                    for _ in 0..500000 {
+                        execute(&args[pos + 1]);
+                    }
+                    let duration = start.elapsed();
+                    println!(
+                        "Time elapsed in total {:?} for each operation in average {:?}",
+                        duration,
+                        duration / 500000
+                    );
+                }
             }
             "-v" => println!("{}", VERSION),
 
