@@ -6,4 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-llvm-sys = "150.0.0"
+llvm-sys = "160.1.2"
+winit = "0.27.5"
+imgui = {version = "0.11.0"}
+imgui-winit-support = "0.11.0"
+glium = "0.32.1"
+imgui-glium-renderer = "0.11.0"

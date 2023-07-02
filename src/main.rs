@@ -1,4 +1,5 @@
-use llvm_sys::core::LLVMAddIncoming;
+use std::println;
+use glium::Surface;
 //#![deny(warnings)]
 use llvm_sys::core::LLVMBuildBr;
 use llvm_sys::core::LLVMBuildCondBr;
@@ -8,12 +9,11 @@ use llvm_sys::{
     analysis::LLVMVerifyModule,
     core::{
         LLVMAddFunction, LLVMAppendBasicBlockInContext, LLVMBuildAdd, LLVMBuildAlloca,
-        LLVMBuildCall2, LLVMBuildFree, LLVMBuildGEP2, LLVMBuildLoad2, LLVMBuildPhi,
-        LLVMBuildRetVoid, LLVMBuildStore, LLVMBuildSub, LLVMBuildTrunc, LLVMBuildZExt,
-        LLVMConstInt, LLVMConstPointerNull, LLVMDumpModule, LLVMFunctionType,
-        LLVMGetFirstBasicBlock, LLVMGetParam, LLVMInt32TypeInContext, LLVMInt64TypeInContext,
-        LLVMInt8TypeInContext, LLVMPointerTypeInContext, LLVMPositionBuilderAtEnd,
-        LLVMVoidTypeInContext,
+        LLVMBuildCall2, LLVMBuildFree, LLVMBuildGEP2, LLVMBuildLoad2, LLVMBuildRetVoid,
+        LLVMBuildStore, LLVMBuildSub, LLVMBuildTrunc, LLVMBuildZExt, LLVMConstInt,
+        LLVMConstPointerNull, LLVMDumpModule, LLVMFunctionType, LLVMGetParam,
+        LLVMInt32TypeInContext, LLVMInt64TypeInContext, LLVMInt8TypeInContext,
+        LLVMPointerTypeInContext, LLVMPositionBuilderAtEnd, LLVMVoidTypeInContext,
     },
     prelude::*,
     target::{LLVM_InitializeNativeAsmPrinter, LLVM_InitializeNativeTarget},
@@ -23,21 +23,32 @@ use llvm_sys::{
     },
     LLVMValue,
 };
+use winit::event::Event;
+use winit::event::WindowEvent;
+use winit::event_loop::ControlFlow;
+use std::thread;
 
+use std::collections::HashMap;
 use std::io::prelude::*;
 use std::io::{stdin, Read};
 use std::time::Instant;
+
 use std::{fs::read, ptr::null_mut};
 use std::{fs::File, process::Command};
 
 use std::ffi::{CStr, CString};
 
+use imgui::*;
+use winit::event_loop::EventLoop;
+
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 
 // TODO: CLI
 //
-
 fn main() {
+    std::env::set_var("WINIT_UNIX_BACKEND", "x11");
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 2 {
         println!("-b: build Binary Code [].bbf\n-i: run created Binary [].bf\n-l Build it Using LLVM (Please dont use loops xD, everything else works) [].bf\n-r: Run the String Code [].bf\n You are using the Version {}", VERSION);
@@ -87,6 +98,10 @@ fn main() {
             "-r" => execute(&args[pos]),
             "-d" => {
                 println!("{}", String::from_utf8_lossy(&read_byte(&args[pos])));
+            }
+
+            "-a" => {
+                let anlyzer = analyzer::new(&args[pos]).analyze();
             }
             _ => (),
         }
@@ -869,4 +884,210 @@ impl LLVM {
             LLVMDumpModule(self.module);
         }
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum instr {
+    plus,
+    minus,
+    increase,
+    decrease,
+    read,
+    write,
+    loop_start,
+    loop_end,
+}
+
+impl instr {
+    pub fn value(&self) -> isize {
+        match &self {
+            Self::read | Self::write => 10,
+            Self::loop_start | Self::loop_end => -1,
+            _ => 1,
+        }
+    }
+}
+#[derive(Debug, Clone)]
+pub struct analyzer {
+    pub pos: usize,
+    pub path: String,
+    pub score: isize,
+    pub comp: HashMap<usize, (instr, isize)>,
+}
+
+impl analyzer {
+    pub fn new(path: &str) -> Self {
+        let s_path = String::from(path);
+        Self {
+            pos: 0,
+            path: s_path,
+            score: 0,
+            comp: HashMap::new(),
+        }
+    }
+    pub fn analyze(&mut self) {
+
+        let chars = read_byte(&*self.path);
+        loop {
+            match chars[self.pos] {
+                    b'<' =>  match self.comp.insert(self.pos, (instr::increase, 1)){
+                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
+                        None => (),
+
+                    },
+                    
+                    b'>' => match self.comp.insert(self.pos, (instr::decrease, 1)){
+                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
+                        None => (),
+
+                    }
+
+                    b'+' => match self.comp.insert(self.pos, (instr::plus, 1)){
+                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
+                        None => (),
+                    }
+
+                    b'-' => match self.comp.insert(self.pos, (instr::minus, 1)){
+                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
+                        None => (),
+                    }
+
+                    b'[' => match self.comp.insert(self.pos, (instr::loop_start, 0)){
+                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
+                        None => (),
+
+                    }
+
+                    b']' => match self.comp.insert(self.pos, (instr::loop_end, 0)){
+                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
+                        None => (),
+
+                    }
+
+                    b'.' => match self.comp.insert(self.pos, (instr::write,10 )){
+                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
+                        None => (),
+
+                    }
+
+                    b',' => match self.comp.insert(self.pos, (instr::read,10)){
+                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
+                        None => (),
+                    }
+
+                    _ => (),
+                }
+            self.pos += 1;
+            if self.pos >= chars.len() {
+                break;
+            }
+        }
+        for i in 0..chars.len() - 1 {
+            let instr = self.comp[&i];
+            self.score += instr.1;
+        }
+        println!("In total the Score of your programm is: {}", self.score);
+        let (event_loop, display) = create_window();
+        let (mut winit_platform, mut imgui_context) = imgui_init(&display);
+
+            // Create renderer from this crate
+    let mut renderer = imgui_glium_renderer::Renderer::init(&mut imgui_context, &display)
+        .expect("Failed to initialize renderer");
+
+    // Timer for FPS calculation
+    let mut last_frame = std::time::Instant::now();
+    let analyzer = self.clone();
+    let mut min: i32 = 3;
+     event_loop.run(move |event, _, control_flow| match event {
+        Event::NewEvents(_) => {
+            let now = std::time::Instant::now();
+            imgui_context.io_mut().update_delta_time(now - last_frame);
+            last_frame = now;
+        }
+        Event::MainEventsCleared => {
+            let gl_window = display.gl_window();
+            winit_platform
+                .prepare_frame(imgui_context.io_mut(), gl_window.window())
+                .expect("Failed to prepare frame");
+            gl_window.window().request_redraw();
+        }
+        Event::RedrawRequested(_) => {
+            // Create frame for the all important `&imgui::Ui`
+            let ui = imgui_context.frame();
+
+            ui.window("Analyzer - Score").size([600.0,125.0], Condition::FirstUseEver)
+            .build(||{
+                ui.text(format!(" Total Score of {}: {}", analyzer.path , analyzer.score));
+                let per_op = analyzer.score as usize/ analyzer.pos;
+                ui.text(format!(" Per Operation: {}", per_op ));
+                if ui.input_int("Set time per operation", &mut min).enter_returns_true(true).build() {}
+                if  per_op as i32 >= min {
+                    ui.text_colored([1.0, 0.0, 0.0, 1.0], " Daaaamn your program needs some optimization"); 
+                }
+            });
+
+            ui.window("Analyzer - Code").size([600.0,125.0], Condition::FirstUseEver).build(||{
+                for x in analyzer.comp.iter(){
+                    ui.text(format!("{:?} - {:?}", x.1.0, x.1.1));
+                }
+            });
+
+            // Setup for drawing
+            let gl_window = display.gl_window();
+            let mut target = display.draw();
+
+            // Renderer doesn't automatically clear window
+            target.clear_color_srgb(0.0, 0.0, 0.0, 0.0);
+
+            // Perform rendering
+            winit_platform.prepare_render(ui, gl_window.window());
+            let draw_data = imgui_context.render();
+            renderer
+                .render(&mut target, draw_data)
+                .expect("Rendering failed");
+            target.finish().expect("Failed to swap buffers");
+        }
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => *control_flow = ControlFlow::Exit,
+        event => {
+            let gl_window = display.gl_window();
+            winit_platform.handle_event(imgui_context.io_mut(), gl_window.window(), &event);
+        }
+    });
+    }
+    pub fn optimize(&mut self) {}
+}
+
+fn create_window() -> (EventLoop<()>, glium::Display) {
+    let event_loop = EventLoop::new();
+    let context = glium::glutin::ContextBuilder::new().with_vsync(true);
+    let builder = glium::glutin::window::WindowBuilder::new()
+        .with_title("BrainFuck Analyzer")
+        .with_inner_size(glium::glutin::dpi::LogicalSize::new(1024f64, 768f64));
+    let display =
+        glium::Display::new(builder, context, &event_loop).expect("Failed to initialize display");
+
+    (event_loop, display)
+}
+
+fn imgui_init(display: &glium::Display) -> (imgui_winit_support::WinitPlatform, imgui::Context) {
+    let mut imgui_context = imgui::Context::create();
+    imgui_context.set_ini_filename(None);
+
+    let mut winit_platform = imgui_winit_support::WinitPlatform::init(&mut imgui_context);
+
+    let gl_window = display.gl_window();
+    let window = gl_window.window();
+
+    let dpi_mode = imgui_winit_support::HiDpiMode::Default;
+
+    winit_platform.attach_window(imgui_context.io_mut(), window, dpi_mode);
+
+    imgui_context
+        .fonts()
+        .add_font(&[imgui::FontSource::DefaultFontData { config: None }]);
+
+    (winit_platform, imgui_context)
 }
