@@ -1,5 +1,6 @@
-use std::println;
 use glium::Surface;
+use std::borrow::Cow;
+use std::println;
 //#![deny(warnings)]
 use llvm_sys::core::LLVMBuildBr;
 use llvm_sys::core::LLVMBuildCondBr;
@@ -23,10 +24,10 @@ use llvm_sys::{
     },
     LLVMValue,
 };
+use std::thread;
 use winit::event::Event;
 use winit::event::WindowEvent;
 use winit::event_loop::ControlFlow;
-use std::thread;
 
 use std::collections::HashMap;
 use std::io::prelude::*;
@@ -40,10 +41,9 @@ use std::ffi::{CStr, CString};
 
 use imgui::*;
 use winit::event_loop::EventLoop;
-
+use regex::Regex;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
 
 // TODO: CLI
 //
@@ -101,7 +101,7 @@ fn main() {
             }
 
             "-a" => {
-                let anlyzer = analyzer::new(&args[pos]).analyze();
+                let anlyzer = analyzer::new(&args[pos]).analyze_gui();
             }
             _ => (),
         }
@@ -129,6 +129,25 @@ fn write(bytes: Vec<u8>, path: &str) {
     };
     out_file.write_all(&bytes[..]).expect("Fehler");
 }
+
+fn write_(msg: &mut String, path: &str) {
+    let mut out_file = match File::create(path) {
+        Ok(val) => val,
+        Err(_) => match File::open(path) {
+            Ok(val) => val,
+            Err(err) => {
+                panic!("{}", err);
+            }
+        },
+    };
+    out_file.write_all(msg.as_bytes()).expect("Fehler");
+}
+
+fn parse(s: &str) -> String {
+    let pattern = Regex::new(r"[^\+\-\.,\[\]]").unwrap();
+    pattern.replace_all(s, "").to_string()
+}
+
 fn execute(path: &str) {
     let mut buffer: [u8; 30000] = [0; 30000];
     let mut stc_ptr = 0;
@@ -896,6 +915,7 @@ pub enum instr {
     write,
     loop_start,
     loop_end,
+    null,
 }
 
 impl instr {
@@ -925,9 +945,108 @@ impl analyzer {
             comp: HashMap::new(),
         }
     }
-    pub fn analyze(&mut self) {
+    pub fn analyze_gui(&mut self) {
+        self.analyze();
+        println!("In total the Score of your programm is: {}", self.score);
+        let (event_loop, display) = create_window();
+        let (mut winit_platform, mut imgui_context) = imgui_init(&display);
 
+        // Create renderer from this crate
+        let mut renderer = imgui_glium_renderer::Renderer::init(&mut imgui_context, &display)
+            .expect("Failed to initialize renderer");
+
+        // Timer for FPS calculation
+        let mut last_frame = std::time::Instant::now();
+        let mut analyzer = self.clone();
+        let mut min: i32 = 3;
+        event_loop.run(move |event, _, control_flow| match event {
+            Event::NewEvents(_) => {
+                let now = std::time::Instant::now();
+                imgui_context.io_mut().update_delta_time(now - last_frame);
+                last_frame = now;
+            }
+            Event::MainEventsCleared => {
+                let gl_window = display.gl_window();
+                winit_platform
+                    .prepare_frame(imgui_context.io_mut(), gl_window.window())
+                    .expect("Failed to prepare frame");
+                gl_window.window().request_redraw();
+            }
+            Event::RedrawRequested(_) => {
+                // Create frame for the all important `&imgui::Ui`
+                let ui = imgui_context.frame();
+
+                ui.window("Analyzer")
+                    .size([((analyzer.pos*25) as f32) + 150.0, 600.0], Condition::Always)
+                    .build(|| {
+                        ui.text(format!(
+                            " Total Score of {}: {}",
+                            analyzer.path, analyzer.score
+                        ));
+                        let per_op = analyzer.score as usize / analyzer.pos;
+                        ui.text(format!(" Per Operation: {}", per_op));
+                        if ui
+                            .input_int("Set time per operation", &mut min)
+                            .enter_returns_true(true)
+                            .build()
+                        {}
+                        if per_op as i32 >= min {
+                            ui.text_colored(
+                                [1.0, 0.0, 0.0, 1.0],
+                                " Daaaamn your program needs some optimization",
+                            );
+                        }
+                        let mut array = Vec::<f32>::new();
+                        for x in 0..=analyzer.comp.len()-1 {
+                            let element = match analyzer.comp.get(&x){
+                                Some(t) => t,
+                                None => &(instr::null, 0),
+                            };
+                            array.push(element.1 as f32);
+                        } 
+                        ui.plot_lines("heavyness in code", &array).graph_size([(analyzer.pos*25) as f32, 200.0]).build();
+                        let mut file_string = String::from_utf8(read_byte(&analyzer.path)).unwrap();
+                        if ui.input_text("Editor", &mut file_string ).build() {
+                            file_string = parse(&file_string).to_string();
+                            if file_string.is_empty() {
+                                file_string += "++";
+                            }
+                            write_(&mut file_string, &analyzer.path);
+                            analyzer.analyze();
+                        }
+                    });
+
+                // Setup for drawing
+                let gl_window = display.gl_window();
+                let mut target = display.draw();
+
+                // Renderer doesn't automatically clear window
+                target.clear_color_srgb(0.0, 0.0, 0.0, 0.0);
+
+                // Perform rendering
+                winit_platform.prepare_render(ui, gl_window.window());
+                let draw_data = imgui_context.render();
+                renderer
+                    .render(&mut target, draw_data)
+                    .expect("Rendering failed");
+                target.finish().expect("Failed to swap buffers");
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => *control_flow = ControlFlow::Exit,
+            event => {
+                let gl_window = display.gl_window();
+                winit_platform.handle_event(imgui_context.io_mut(), gl_window.window(), &event);
+            }
+        });
+    }
+
+    pub fn analyze(&mut self){
         let chars = read_byte(&*self.path);
+        self.pos = 0;
+        self.score = 0;
+        self.comp = HashMap::new();
         loop {
             match chars[self.pos] {
                     b'<' =>  match self.comp.insert(self.pos, (instr::increase, 1)){
@@ -986,77 +1105,8 @@ impl analyzer {
             let instr = self.comp[&i];
             self.score += instr.1;
         }
-        println!("In total the Score of your programm is: {}", self.score);
-        let (event_loop, display) = create_window();
-        let (mut winit_platform, mut imgui_context) = imgui_init(&display);
-
-            // Create renderer from this crate
-    let mut renderer = imgui_glium_renderer::Renderer::init(&mut imgui_context, &display)
-        .expect("Failed to initialize renderer");
-
-    // Timer for FPS calculation
-    let mut last_frame = std::time::Instant::now();
-    let analyzer = self.clone();
-    let mut min: i32 = 3;
-     event_loop.run(move |event, _, control_flow| match event {
-        Event::NewEvents(_) => {
-            let now = std::time::Instant::now();
-            imgui_context.io_mut().update_delta_time(now - last_frame);
-            last_frame = now;
-        }
-        Event::MainEventsCleared => {
-            let gl_window = display.gl_window();
-            winit_platform
-                .prepare_frame(imgui_context.io_mut(), gl_window.window())
-                .expect("Failed to prepare frame");
-            gl_window.window().request_redraw();
-        }
-        Event::RedrawRequested(_) => {
-            // Create frame for the all important `&imgui::Ui`
-            let ui = imgui_context.frame();
-
-            ui.window("Analyzer - Score").size([600.0,125.0], Condition::FirstUseEver)
-            .build(||{
-                ui.text(format!(" Total Score of {}: {}", analyzer.path , analyzer.score));
-                let per_op = analyzer.score as usize/ analyzer.pos;
-                ui.text(format!(" Per Operation: {}", per_op ));
-                if ui.input_int("Set time per operation", &mut min).enter_returns_true(true).build() {}
-                if  per_op as i32 >= min {
-                    ui.text_colored([1.0, 0.0, 0.0, 1.0], " Daaaamn your program needs some optimization"); 
-                }
-            });
-
-            ui.window("Analyzer - Code").size([600.0,125.0], Condition::FirstUseEver).build(||{
-                for x in analyzer.comp.iter(){
-                    ui.text(format!("{:?} - {:?}", x.1.0, x.1.1));
-                }
-            });
-
-            // Setup for drawing
-            let gl_window = display.gl_window();
-            let mut target = display.draw();
-
-            // Renderer doesn't automatically clear window
-            target.clear_color_srgb(0.0, 0.0, 0.0, 0.0);
-
-            // Perform rendering
-            winit_platform.prepare_render(ui, gl_window.window());
-            let draw_data = imgui_context.render();
-            renderer
-                .render(&mut target, draw_data)
-                .expect("Rendering failed");
-            target.finish().expect("Failed to swap buffers");
-        }
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } => *control_flow = ControlFlow::Exit,
-        event => {
-            let gl_window = display.gl_window();
-            winit_platform.handle_event(imgui_context.io_mut(), gl_window.window(), &event);
-        }
-    });
     }
+
     pub fn optimize(&mut self) {}
 }
 
@@ -1065,7 +1115,7 @@ fn create_window() -> (EventLoop<()>, glium::Display) {
     let context = glium::glutin::ContextBuilder::new().with_vsync(true);
     let builder = glium::glutin::window::WindowBuilder::new()
         .with_title("BrainFuck Analyzer")
-        .with_inner_size(glium::glutin::dpi::LogicalSize::new(1024f64, 768f64));
+        .with_inner_size(glium::glutin::dpi::LogicalSize::new(1920f64, 1080f64));
     let display =
         glium::Display::new(builder, context, &event_loop).expect("Failed to initialize display");
 
