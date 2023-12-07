@@ -413,6 +413,7 @@ fn interpret(path: &str) {
 
 fn llvm(path: &str) {
     let mut llvm = LLVM::new();
+    llvm.syntax_check(path);
     llvm.code_gen(path);
     llvm.dump();
     llvm.generate();
@@ -439,6 +440,51 @@ impl LLVM {
                 ctx,
                 builder,
                 module,
+            }
+        }
+    }
+
+    pub fn syntax_check(&self, path: &str){
+        let chars: Vec<u8> = read_byte(path);
+        let mut progr = 0;
+        let mut stack = Vec::<(char, u8)>::new();
+        loop {
+            match chars[progr] {
+
+                b'[' => {
+                    let mut unmatch = progr + 1;
+                    let mut deep = 1;
+                    loop {
+                        match chars[unmatch] {
+                            b'[' => deep += 1,
+                            b']' => deep -= 1,
+                            _ => (),
+                        }
+                        unmatch += 1;
+                        if deep == 0 {
+                            break;
+                        }
+                        if unmatch >= chars.len() {
+                            panic!("Unmatched ]");
+                        }
+                    }
+                    stack.push(('[', unmatch as u8));
+                }
+                b']' => {
+                    let i = stack.last();
+                    if let Some(('[', _val)) = i {
+                        stack.pop();
+                    } else {
+                        eprintln!("Unmatched ']'");
+                        std::process::exit(1);
+                    }
+                }
+                _ => (),
+            }
+
+            progr += 1;
+            if progr >= chars.len() {
+                break;
             }
         }
     }
@@ -681,19 +727,9 @@ impl LLVM {
                         );
                         depth_vec.push(for_end_block);
 
-                        // now we can use the phi node as a value
-                        // we need to load the value of the phi node
-                        // lets do the cond jump:
-                        // if phi_value == 0 jump to for_end_block
-                        // else jump to for_block
                         LLVMBuildCondBr(self.builder, if_cond, for_end_block, for_loop);
-                        // now position the builder at the end of the for_block
+                        // now position the builder at the end of the loop block
                         LLVMPositionBuilderAtEnd(self.builder, for_loop);
-
-                        // for loop still needs a terminator
-                        // we can use a br instruction
-                        // this will jump to the for_end_block
-                        //LLVMBuildBr(self.builder, for_end_block);
                     }
 
                     b']' => {
