@@ -46,7 +46,6 @@ use regex::Regex;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // TODO: CLI
-//
 fn main() {
     std::env::set_var("WINIT_UNIX_BACKEND", "x11");
     let args: Vec<String> = std::env::args().collect();
