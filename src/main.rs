@@ -451,7 +451,6 @@ impl LLVM {
         let mut ptr = 0;
         unsafe {
             // we need a vector to keep track of the fro loops/for loops ends
-            let mut for_loops = Vec::<LLVMBasicBlockRef>::new();
             let main_fn = self.create_fn("exec");
             let arr = LLVMGetParam(main_fn, 0);
             let m_block = LLVMAppendBasicBlockInContext(self.ctx, main_fn, cstr("").as_ptr());
@@ -475,6 +474,8 @@ impl LLVM {
             );
             let addend = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0 as u64, 0);
             LLVMBuildStore(self.builder, addend, i_ptr);
+
+            let mut depth_vec: Vec<LLVMBasicBlockRef> = Vec::new();
 
             loop {
                 match chars[ptr] {
@@ -621,11 +622,11 @@ impl LLVM {
                         let for_block = LLVMAppendBasicBlockInContext(
                             self.ctx,
                             main_fn,
-                            cstr("for-loop").as_ptr(),
+                            cstr("header").as_ptr(),
                         );
+                        depth_vec.push(for_block);
                         LLVMBuildBr(self.builder, for_block);
                         LLVMPositionBuilderAtEnd(self.builder, for_block);
-
                         // check if the current value is 0, the current value is the value at the pointers position in the array
                         let pos = LLVMBuildLoad2(
                             self.builder,
@@ -668,17 +669,19 @@ impl LLVM {
                         // make a cond jump:
                         // if elem_value == 0 jump to for_end_block
                         // else jump to for_block
-
-                        let for_end_block = LLVMAppendBasicBlockInContext(
-                            self.ctx,
-                            main_fn,
-                            cstr("for-end").as_ptr(),
-                        );
+                        // runs the loop
                         let for_loop = LLVMAppendBasicBlockInContext(
                             self.ctx,
                             main_fn,
-                            cstr("for-loop").as_ptr(),
+                            cstr("loop").as_ptr(),
                         );
+                        //after the loop
+                        let for_end_block = LLVMAppendBasicBlockInContext(
+                            self.ctx,
+                            main_fn,
+                            cstr("end").as_ptr(),
+                        );
+                        depth_vec.push(for_end_block);
 
                         // now we can use the phi node as a value
                         // we need to load the value of the phi node
@@ -689,12 +692,6 @@ impl LLVM {
                         // now position the builder at the end of the for_block
                         LLVMPositionBuilderAtEnd(self.builder, for_loop);
 
-                        // push the for_block to the stack
-
-                        for_loops.push(for_block);
-                        for_loops.push(for_loop);
-                        for_loops.push(for_end_block);
-
                         // for loop still needs a terminator
                         // we can use a br instruction
                         // this will jump to the for_end_block
@@ -702,12 +699,12 @@ impl LLVM {
                     }
 
                     b']' => {
-                        let for_end_block = for_loops.pop().unwrap();
-                        let for_loop = for_loops.pop().unwrap();
-                        let for_block = for_loops.pop().unwrap();
-                        LLVMPositionBuilderAtEnd(self.builder, for_loop);
-                        LLVMBuildBr(self.builder, for_block);
-                        LLVMPositionBuilderAtEnd(self.builder, for_end_block);
+                        println!("{}", ptr);
+                        let end = depth_vec.pop().unwrap();
+                        let loop_ = depth_vec.pop().unwrap();
+                        LLVMBuildBr(self.builder, loop_);
+                        LLVMPositionBuilderAtEnd(self.builder, end);
+
                     }
 
                     b'.' => {
@@ -879,14 +876,31 @@ impl LLVM {
                 }
                 _ => (),
             }
-            LLVMDisposeTargetMachine(target_machine);
-            Command::new("clang")
-                .arg("main.c")
-                .arg("exec.o")
-                .arg("-o")
-                .arg("exec")
-                .output()
-                .expect("Have You installed `clang' and have the main.c in scoop?");
+
+            let mut file = File::create("main_link_file.c");
+            if let Ok(mut file) = file{
+                let _ = file.write_all(b"
+#include <stdlib.h>
+extern void exec(char *ptr);
+int main() {
+  char* array = calloc(30000, sizeof(char));
+  exec(array);
+  return 0;
+}
+
+                ");
+                LLVMDisposeTargetMachine(target_machine);
+                Command::new("clang")
+                    .arg("main_link_file.c")
+                    .arg("exec.o")
+                    .arg("-o")
+                    .arg("exec")
+                    .output()
+                    .expect("Have You installed `clang' and have the main_link_file.c there?");
+            }
+            else{
+                panic!("Unable to cerate file *main_link_file.c*");
+            }
         }
     }
 
