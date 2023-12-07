@@ -1,7 +1,7 @@
+#![deny(warnings)]
+
 use glium::Surface;
-use std::borrow::Cow;
 use std::println;
-//#![deny(warnings)]
 use llvm_sys::core::LLVMBuildBr;
 use llvm_sys::core::LLVMBuildCondBr;
 use llvm_sys::core::LLVMBuildICmp;
@@ -24,7 +24,6 @@ use llvm_sys::{
     },
     LLVMValue,
 };
-use std::thread;
 use winit::event::Event;
 use winit::event::WindowEvent;
 use winit::event_loop::ControlFlow;
@@ -100,7 +99,7 @@ fn main() {
             }
 
             "-a" => {
-                let anlyzer = analyzer::new(&args[pos]).analyze_gui();
+                Analyzer::new(&args[pos]).analyze_gui();
             }
             _ => (),
         }
@@ -698,7 +697,6 @@ impl LLVM {
                     }
 
                     b']' => {
-                        println!("{}", ptr);
                         let end = depth_vec.pop().unwrap();
                         let loop_ = depth_vec.pop().unwrap();
                         LLVMBuildBr(self.builder, loop_);
@@ -876,7 +874,7 @@ impl LLVM {
                 _ => (),
             }
 
-            let mut file = File::create("main_link_file.c");
+            let file = File::create("main_link_file.c");
             if let Ok(mut file) = file{
                 let _ = file.write_all(b"
 #include <stdlib.h>
@@ -919,36 +917,36 @@ int main() {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum instr {
-    plus,
-    minus,
-    increase,
-    decrease,
-    read,
-    write,
-    loop_start,
-    loop_end,
-    null,
+pub enum Instr {
+    Plus,
+    Minus,
+    Increase,
+    Decrease,
+    Read,
+    Write,
+    LoopStart,
+    LoopEnd,
+    Null,
 }
 
-impl instr {
+impl Instr {
     pub fn value(&self) -> isize {
         match &self {
-            Self::read | Self::write => 10,
-            Self::loop_start | Self::loop_end => -1,
+            Self::Read | Self::Write => 10,
+            Self::LoopStart | Self::LoopEnd => -1,
             _ => 1,
         }
     }
 }
 #[derive(Debug, Clone)]
-pub struct analyzer {
+pub struct Analyzer {
     pub pos: usize,
     pub path: String,
     pub score: isize,
-    pub comp: HashMap<usize, (instr, isize)>,
+    pub comp: HashMap<usize, (Instr, isize)>,
 }
 
-impl analyzer {
+impl Analyzer {
     pub fn new(path: &str) -> Self {
         let s_path = String::from(path);
         Self {
@@ -1013,7 +1011,7 @@ impl analyzer {
                         for x in 0..=analyzer.comp.len()-1 {
                             let element = match analyzer.comp.get(&x){
                                 Some(t) => t,
-                                None => &(instr::null, 0),
+                                None => &(Instr::Null, 0),
                             };
                             array.push(element.1 as f32);
                         } 
@@ -1062,47 +1060,47 @@ impl analyzer {
         self.comp = HashMap::new();
         loop {
             match chars[self.pos] {
-                    b'<' =>  match self.comp.insert(self.pos, (instr::increase, 1)){
+                    b'<' =>  match self.comp.insert(self.pos, (Instr::Increase, 1)){
                         Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
                         None => (),
 
                     },
                     
-                    b'>' => match self.comp.insert(self.pos, (instr::decrease, 1)){
+                    b'>' => match self.comp.insert(self.pos, (Instr::Decrease, 1)){
                         Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
                         None => (),
 
                     }
 
-                    b'+' => match self.comp.insert(self.pos, (instr::plus, 1)){
+                    b'+' => match self.comp.insert(self.pos, (Instr::Plus, 1)){
                         Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
                         None => (),
                     }
 
-                    b'-' => match self.comp.insert(self.pos, (instr::minus, 1)){
+                    b'-' => match self.comp.insert(self.pos, (Instr::Minus, 1)){
                         Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
                         None => (),
                     }
 
-                    b'[' => match self.comp.insert(self.pos, (instr::loop_start, 0)){
-                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
-                        None => (),
-
-                    }
-
-                    b']' => match self.comp.insert(self.pos, (instr::loop_end, 0)){
+                    b'[' => match self.comp.insert(self.pos, (Instr::LoopStart, 0)){
                         Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
                         None => (),
 
                     }
 
-                    b'.' => match self.comp.insert(self.pos, (instr::write,10 )){
+                    b']' => match self.comp.insert(self.pos, (Instr::LoopEnd, 0)){
                         Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
                         None => (),
 
                     }
 
-                    b',' => match self.comp.insert(self.pos, (instr::read,10)){
+                    b'.' => match self.comp.insert(self.pos, (Instr::Write, 10 )){
+                        Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
+                        None => (),
+
+                    }
+
+                    b',' => match self.comp.insert(self.pos, (Instr::Read, 10)){
                         Some(_) => panic!("Ühm this should not happen because an position shouldent be writen multiplitimes"),
                         None => (),
                     }
