@@ -51,7 +51,7 @@ fn main() {
     std::env::set_var("WINIT_UNIX_BACKEND", "x11");
     let args: Vec<String> = std::env::args().collect();
     if args.len() <= 2 {
-        println!("-b: build Binary Code [].bbf\n-i: run created Binary [].bf\n-l Build it Using LLVM (Please dont use loops xD, everything else works) [].bf\n-r: Run the String Code [].bf\n You are using the Version {}", VERSION);
+        println!("-b: build Binary Code [].bbf\n-i: run created Binary [].bf\n-l Build it Using LLVM [].bf\n-r: Run the String Code [].bf\n You are using the Version {}", VERSION);
     }
 
     for pos in 2..args.len() {
