@@ -4,6 +4,7 @@ a simple bainf**k interpret just run:\
 - -b: Compile Files to ByteCode
 - -i run ByteCode
 - -r run PlainText Brainf**k
+- -l compile it to nativ code using llvm and clang
 
 i recommend to compile it to ByteCode and then Run the ByteCode  
 because:
